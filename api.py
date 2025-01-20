@@ -1,5 +1,6 @@
 import requests
 
+
 class WordPressAPI:
     def __init__(self, domain):
         """
@@ -67,4 +68,31 @@ class WordPressAPI:
             params["post"] = post_id
         return self._make_request("GET", "comments", params=params)
 
+    def get_comment(self, comment_id):
+        """
+        Retrieve a single comment by its ID.
 
+        :param comment_id: ID of the comment to fetch
+        :return: Comment details
+        """
+        return self._make_request("GET", f"comments/{comment_id}")
+
+    def get_pages(self, page=1, per_page=10):
+        """
+        Retrieve a paginated list of pages.
+
+        :param page: Page number to fetch
+        :param per_page: Number of pages per page (default: 10)
+        :return: List of pages
+        """
+        params = {"page": page, "per_page": per_page}
+        return self._make_request("GET", "pages", params=params)
+
+    def get_page(self, page_id):
+        """
+        Retrieve a single page by its ID.
+
+        :param page_id: ID of the page to fetch
+        :return: Page details
+        """
+        return self._make_request("GET", f"pages/{page_id}")
