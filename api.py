@@ -51,15 +51,19 @@ class WordPressAPI:
             print(f"Error: {e}")
             raise
 
-    def get_posts(self, page=1, per_page=10):
+    def get_posts(self, page=1, per_page=10, after=None):
         """
-        Retrieve a paginated list of posts.
+        Retrieve a paginated list of posts ordered by date ascending.
 
         :param page: Page number to fetch
         :param per_page: Number of posts per page (default: 10)
+        :param after: ISO 8601 formatted date-time string to fetch posts after this date
         :return: WordPressResponse object
         """
-        params = {"page": page, "per_page": per_page}
+        params = {"page": page, "per_page": per_page,
+                  "orderby": "date", "order": "asc"}
+        if after:
+            params["after"] = after
         return self._make_request("GET", "posts", params=params)
 
     def get_post(self, post_id):
@@ -71,18 +75,22 @@ class WordPressAPI:
         """
         return self._make_request("GET", f"posts/{post_id}")
 
-    def get_comments(self, post_id=None, page=1, per_page=10):
+    def get_comments(self, post_id=None, page=1, per_page=10, after=None):
         """
-        Retrieve a list of comments, optionally filtered by post ID.
+        Retrieve a list of comments, optionally filtered by post ID and ordered by date ascending.
 
         :param post_id: Filter comments by post ID (optional)
         :param page: Page number to fetch
         :param per_page: Number of comments per page (default: 10)
+        :param after: ISO 8601 formatted date-time string to fetch comments after this date
         :return: WordPressResponse object
         """
-        params = {"page": page, "per_page": per_page}
+        params = {"page": page, "per_page": per_page,
+                  "orderby": "date", "order": "asc"}
         if post_id:
             params["post"] = post_id
+        if after:
+            params["after"] = after
         return self._make_request("GET", "comments", params=params)
 
     def get_comment(self, comment_id):
@@ -94,15 +102,19 @@ class WordPressAPI:
         """
         return self._make_request("GET", f"comments/{comment_id}")
 
-    def get_pages(self, page=1, per_page=10):
+    def get_pages(self, page=1, per_page=10, after=None):
         """
-        Retrieve a paginated list of pages.
+        Retrieve a paginated list of pages ordered by date ascending.
 
         :param page: Page number to fetch
         :param per_page: Number of pages per page (default: 10)
+        :param after: ISO 8601 formatted date-time string to fetch pages after this date
         :return: WordPressResponse object
         """
-        params = {"page": page, "per_page": per_page}
+        params = {"page": page, "per_page": per_page,
+                  "orderby": "date", "order": "asc"}
+        if after:
+            params["after"] = after
         return self._make_request("GET", "pages", params=params)
 
     def get_page(self, page_id):
