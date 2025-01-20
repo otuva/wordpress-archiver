@@ -1,6 +1,20 @@
 import requests
 
 
+class WordPressResponse:
+    def __init__(self, data, total_count, total_pages_count):
+        """
+        Custom response object to include data and pagination details.
+
+        :param data: The JSON response data
+        :param total_count: Total number of items
+        :param total_pages_count: Total number of pages
+        """
+        self.data = data
+        self.total_count = total_count
+        self.total_pages_count = total_pages_count
+
+
 class WordPressAPI:
     def __init__(self, domain):
         """
@@ -21,7 +35,7 @@ class WordPressAPI:
         :param method: HTTP method (GET, POST, etc.)
         :param endpoint: API endpoint (e.g., 'posts', 'comments')
         :param params: Query parameters
-        :return: Response JSON or raises an HTTPError
+        :return: WordPressResponse object
         """
         url = f"{self.base_url}/{endpoint}"
         try:
@@ -29,7 +43,10 @@ class WordPressAPI:
                 method, url, headers=self.headers, params=params
             )
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            total_count = int(response.headers.get("X-WP-Total", 0))
+            total_pages_count = int(response.headers.get("X-WP-TotalPages", 1))
+            return WordPressResponse(data, total_count, total_pages_count)
         except requests.exceptions.RequestException as e:
             print(f"Error: {e}")
             raise
@@ -40,7 +57,7 @@ class WordPressAPI:
 
         :param page: Page number to fetch
         :param per_page: Number of posts per page (default: 10)
-        :return: List of posts
+        :return: WordPressResponse object
         """
         params = {"page": page, "per_page": per_page}
         return self._make_request("GET", "posts", params=params)
@@ -61,7 +78,7 @@ class WordPressAPI:
         :param post_id: Filter comments by post ID (optional)
         :param page: Page number to fetch
         :param per_page: Number of comments per page (default: 10)
-        :return: List of comments
+        :return: WordPressResponse object
         """
         params = {"page": page, "per_page": per_page}
         if post_id:
@@ -83,7 +100,7 @@ class WordPressAPI:
 
         :param page: Page number to fetch
         :param per_page: Number of pages per page (default: 10)
-        :return: List of pages
+        :return: WordPressResponse object
         """
         params = {"page": page, "per_page": per_page}
         return self._make_request("GET", "pages", params=params)
