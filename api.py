@@ -149,3 +149,43 @@ class WordPressAPI:
         :return: User details
         """
         return self._make_request("GET", f"users/{user_id}")
+
+    def get_categories(self, page=1, per_page=10):
+        """
+        Retrieve a paginated list of categories.
+
+        :param page: Page number to fetch
+        :param per_page: Number of categories per page (default: 10)
+        :return: WordPressResponse object
+        """
+        params = {"page": page, "per_page": per_page}
+        return self._make_request("GET", "categories", params=params)
+
+    def get_category(self, category_id):
+        """
+        Retrieve a single category by its ID.
+
+        :param category_id: ID of the category to fetch
+        :return: Category details
+        """
+        return self._make_request("GET", f"categories/{category_id}")
+
+    def get_tags(self, page=1, per_page=10):
+        """
+        Retrieve a paginated list of tags.
+
+        :param page: Page number to fetch
+        :param per_page: Number of tags per page (default: 10)
+        :return: WordPressResponse object
+        """
+        params = {"page": page, "per_page": per_page}
+        return self._make_request("GET", "tags", params=params)
+
+    def get_tag(self, tag_id):
+        """
+        Retrieve a single tag by its ID.
+
+        :param tag_id: ID of the tag to fetch
+        :return: Tag details
+        """
+        return self._make_request("GET", f"tags/{tag_id}")

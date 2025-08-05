@@ -105,6 +105,62 @@ class WordPressArchiver:
                 )
             ''')
             
+            # Users table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY,
+                    wp_id INTEGER,
+                    name TEXT,
+                    url TEXT,
+                    description TEXT,
+                    link TEXT,
+                    slug TEXT,
+                    avatar_urls TEXT,
+                    mpp_avatar TEXT,
+                    content_hash TEXT,
+                    version INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(wp_id, version)
+                )
+            ''')
+            
+            # Categories table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS categories (
+                    id INTEGER PRIMARY KEY,
+                    wp_id INTEGER,
+                    name TEXT,
+                    description TEXT,
+                    link TEXT,
+                    slug TEXT,
+                    taxonomy TEXT,
+                    parent INTEGER,
+                    count INTEGER,
+                    content_hash TEXT,
+                    version INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(wp_id, version)
+                )
+            ''')
+            
+            # Tags table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tags (
+                    id INTEGER PRIMARY KEY,
+                    wp_id INTEGER,
+                    name TEXT,
+                    description TEXT,
+                    link TEXT,
+                    slug TEXT,
+                    taxonomy TEXT,
+                    count INTEGER,
+                    content_hash TEXT,
+                    version INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(wp_id, version)
+                )
+            ''')
+            
             conn.commit()
     
     def calculate_content_hash(self, content: str) -> str:
@@ -398,6 +454,283 @@ class WordPressArchiver:
         
         return stats
     
+    def archive_users(self, api: WordPressAPI, limit: Optional[int] = None) -> Dict[str, int]:
+        """Archive users from WordPress API."""
+        stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
+        page = 1
+        
+        try:
+            while True:
+                response = api.get_users(page=page, per_page=100)
+                
+                if not response.data:
+                    break
+                
+                for user in response.data:
+                    try:
+                        stats["processed"] += 1
+                        
+                        # Calculate content hash from user data
+                        user_content = f"{user.get('name', '')}{user.get('description', '')}{user.get('url', '')}"
+                        content_hash = self.calculate_content_hash(user_content)
+                        
+                        with sqlite3.connect(self.db_path) as conn:
+                            cursor = conn.cursor()
+                            
+                            # Check if user exists
+                            cursor.execute(
+                                "SELECT id, content_hash, version FROM users WHERE wp_id = ?",
+                                (user['id'],)
+                            )
+                            existing = cursor.fetchone()
+                            
+                            if existing:
+                                # User exists, check if content changed
+                                if existing[1] != content_hash:
+                                    # Content changed, create new version
+                                    cursor.execute('''
+                                        INSERT INTO users 
+                                        (wp_id, name, url, description, link, slug, avatar_urls, mpp_avatar, content_hash, version)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    ''', (
+                                        user['id'],
+                                        user.get('name', ''),
+                                        user.get('url', ''),
+                                        user.get('description', ''),
+                                        user.get('link', ''),
+                                        user.get('slug', ''),
+                                        json.dumps(user.get('avatar_urls', {})),
+                                        json.dumps(user.get('mpp_avatar', {})),
+                                        content_hash,
+                                        existing[2] + 1
+                                    ))
+                                    stats["updated"] += 1
+                                    print(f"Updated user: {user.get('name', 'Unknown')}")
+                            else:
+                                # New user
+                                cursor.execute('''
+                                    INSERT INTO users 
+                                    (wp_id, name, url, description, link, slug, avatar_urls, mpp_avatar, content_hash, version)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ''', (
+                                    user['id'],
+                                    user.get('name', ''),
+                                    user.get('url', ''),
+                                    user.get('description', ''),
+                                    user.get('link', ''),
+                                    user.get('slug', ''),
+                                    json.dumps(user.get('avatar_urls', {})),
+                                    json.dumps(user.get('mpp_avatar', {})),
+                                    content_hash,
+                                    1
+                                ))
+                                stats["new"] += 1
+                                print(f"New user: {user.get('name', 'Unknown')}")
+                            
+                            conn.commit()
+                    
+                    except Exception as e:
+                        stats["errors"] += 1
+                        print(f"Error processing user {user.get('id', 'Unknown')}: {e}")
+                
+                if limit and stats["processed"] >= limit:
+                    break
+                
+                if page >= response.total_pages_count:
+                    break
+                
+                page += 1
+        
+        except Exception as e:
+            print(f"Error during user archiving: {e}")
+            stats["errors"] += 1
+        
+        return stats
+    
+    def archive_categories(self, api: WordPressAPI, limit: Optional[int] = None) -> Dict[str, int]:
+        """Archive categories from WordPress API."""
+        stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
+        page = 1
+        
+        try:
+            while True:
+                response = api.get_categories(page=page, per_page=100)
+                
+                if not response.data:
+                    break
+                
+                for category in response.data:
+                    try:
+                        stats["processed"] += 1
+                        
+                        # Calculate content hash from category data
+                        category_content = f"{category.get('name', '')}{category.get('description', '')}{category.get('slug', '')}"
+                        content_hash = self.calculate_content_hash(category_content)
+                        
+                        with sqlite3.connect(self.db_path) as conn:
+                            cursor = conn.cursor()
+                            
+                            # Check if category exists
+                            cursor.execute(
+                                "SELECT id, content_hash, version FROM categories WHERE wp_id = ?",
+                                (category['id'],)
+                            )
+                            existing = cursor.fetchone()
+                            
+                            if existing:
+                                # Category exists, check if content changed
+                                if existing[1] != content_hash:
+                                    # Content changed, create new version
+                                    cursor.execute('''
+                                        INSERT INTO categories 
+                                        (wp_id, name, description, link, slug, taxonomy, parent, count, content_hash, version)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    ''', (
+                                        category['id'],
+                                        category.get('name', ''),
+                                        category.get('description', ''),
+                                        category.get('link', ''),
+                                        category.get('slug', ''),
+                                        category.get('taxonomy', ''),
+                                        category.get('parent', 0),
+                                        category.get('count', 0),
+                                        content_hash,
+                                        existing[2] + 1
+                                    ))
+                                    stats["updated"] += 1
+                                    print(f"Updated category: {category.get('name', 'Unknown')}")
+                            else:
+                                # New category
+                                cursor.execute('''
+                                    INSERT INTO categories 
+                                    (wp_id, name, description, link, slug, taxonomy, parent, count, content_hash, version)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ''', (
+                                    category['id'],
+                                    category.get('name', ''),
+                                    category.get('description', ''),
+                                    category.get('link', ''),
+                                    category.get('slug', ''),
+                                    category.get('taxonomy', ''),
+                                    category.get('parent', 0),
+                                    category.get('count', 0),
+                                    content_hash,
+                                    1
+                                ))
+                                stats["new"] += 1
+                                print(f"New category: {category.get('name', 'Unknown')}")
+                            
+                            conn.commit()
+                    
+                    except Exception as e:
+                        stats["errors"] += 1
+                        print(f"Error processing category {category.get('id', 'Unknown')}: {e}")
+                
+                if limit and stats["processed"] >= limit:
+                    break
+                
+                if page >= response.total_pages_count:
+                    break
+                
+                page += 1
+        
+        except Exception as e:
+            print(f"Error during category archiving: {e}")
+            stats["errors"] += 1
+        
+        return stats
+    
+    def archive_tags(self, api: WordPressAPI, limit: Optional[int] = None) -> Dict[str, int]:
+        """Archive tags from WordPress API."""
+        stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
+        page = 1
+        
+        try:
+            while True:
+                response = api.get_tags(page=page, per_page=100)
+                
+                if not response.data:
+                    break
+                
+                for tag in response.data:
+                    try:
+                        stats["processed"] += 1
+                        
+                        # Calculate content hash from tag data
+                        tag_content = f"{tag.get('name', '')}{tag.get('description', '')}{tag.get('slug', '')}"
+                        content_hash = self.calculate_content_hash(tag_content)
+                        
+                        with sqlite3.connect(self.db_path) as conn:
+                            cursor = conn.cursor()
+                            
+                            # Check if tag exists
+                            cursor.execute(
+                                "SELECT id, content_hash, version FROM tags WHERE wp_id = ?",
+                                (tag['id'],)
+                            )
+                            existing = cursor.fetchone()
+                            
+                            if existing:
+                                # Tag exists, check if content changed
+                                if existing[1] != content_hash:
+                                    # Content changed, create new version
+                                    cursor.execute('''
+                                        INSERT INTO tags 
+                                        (wp_id, name, description, link, slug, taxonomy, count, content_hash, version)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    ''', (
+                                        tag['id'],
+                                        tag.get('name', ''),
+                                        tag.get('description', ''),
+                                        tag.get('link', ''),
+                                        tag.get('slug', ''),
+                                        tag.get('taxonomy', ''),
+                                        tag.get('count', 0),
+                                        content_hash,
+                                        existing[2] + 1
+                                    ))
+                                    stats["updated"] += 1
+                                    print(f"Updated tag: {tag.get('name', 'Unknown')}")
+                            else:
+                                # New tag
+                                cursor.execute('''
+                                    INSERT INTO tags 
+                                    (wp_id, name, description, link, slug, taxonomy, count, content_hash, version)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ''', (
+                                    tag['id'],
+                                    tag.get('name', ''),
+                                    tag.get('description', ''),
+                                    tag.get('link', ''),
+                                    tag.get('slug', ''),
+                                    tag.get('taxonomy', ''),
+                                    tag.get('count', 0),
+                                    content_hash,
+                                    1
+                                ))
+                                stats["new"] += 1
+                                print(f"New tag: {tag.get('name', 'Unknown')}")
+                            
+                            conn.commit()
+                    
+                    except Exception as e:
+                        stats["errors"] += 1
+                        print(f"Error processing tag {tag.get('id', 'Unknown')}: {e}")
+                
+                if limit and stats["processed"] >= limit:
+                    break
+                
+                if page >= response.total_pages_count:
+                    break
+                
+                page += 1
+        
+        except Exception as e:
+            print(f"Error during tag archiving: {e}")
+            stats["errors"] += 1
+        
+        return stats
+    
     def save_session_stats(self, content_type: str, stats: Dict[str, int]):
         """Save archive session statistics."""
         with sqlite3.connect(self.db_path) as conn:
@@ -430,6 +763,15 @@ class WordPressArchiver:
             cursor.execute("SELECT COUNT(*) FROM pages")
             total_pages = cursor.fetchone()[0]
             
+            cursor.execute("SELECT COUNT(*) FROM users")
+            total_users = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM categories")
+            total_categories = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM tags")
+            total_tags = cursor.fetchone()[0]
+            
             # Get latest session
             cursor.execute("""
                 SELECT session_date, content_type, items_processed, items_new, items_updated, errors
@@ -443,6 +785,9 @@ class WordPressArchiver:
                 "total_posts": total_posts,
                 "total_comments": total_comments,
                 "total_pages": total_pages,
+                "total_users": total_users,
+                "total_categories": total_categories,
+                "total_tags": total_tags,
                 "latest_session": latest_session
             }
 
@@ -457,7 +802,7 @@ def main():
     )
     parser.add_argument(
         "--content-type",
-        choices=["posts", "comments", "pages", "all"],
+        choices=["posts", "comments", "pages", "users", "categories", "tags", "all"],
         default="all",
         help="Type of content to archive (default: all)"
     )
@@ -488,6 +833,9 @@ def main():
         print(f"Total Posts: {stats['total_posts']}")
         print(f"Total Comments: {stats['total_comments']}")
         print(f"Total Pages: {stats['total_pages']}")
+        print(f"Total Users: {stats['total_users']}")
+        print(f"Total Categories: {stats['total_categories']}")
+        print(f"Total Tags: {stats['total_tags']}")
         
         if stats['latest_session']:
             session_date, content_type, processed, new, updated, errors = stats['latest_session']
@@ -510,7 +858,7 @@ def main():
     # Archive content based on type
     content_types = []
     if args.content_type == "all":
-        content_types = ["posts", "comments", "pages"]
+        content_types = ["posts", "comments", "pages", "users", "categories", "tags"]
     else:
         content_types = [args.content_type]
     
@@ -524,6 +872,12 @@ def main():
                 stats = archiver.archive_comments(api, args.limit)
             elif content_type == "pages":
                 stats = archiver.archive_pages(api, args.limit)
+            elif content_type == "users":
+                stats = archiver.archive_users(api, args.limit)
+            elif content_type == "categories":
+                stats = archiver.archive_categories(api, args.limit)
+            elif content_type == "tags":
+                stats = archiver.archive_tags(api, args.limit)
             
             # Save session stats
             archiver.save_session_stats(content_type, stats)
