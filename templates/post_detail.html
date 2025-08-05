@@ -37,9 +37,11 @@
             <div class="row">
                 {% for version in post_versions %}
                 <div class="col-md-4 mb-2">
-                    <div class="card">
+                    <div class="card {% if selected_version and selected_version == version.version %}border-primary{% endif %}">
                         <div class="card-header">
-                            <span class="badge bg-primary">Version {{ version.version }}</span>
+                            <a href="{{ url_for('post_detail', wp_id=version.wp_id) }}?version={{ version.version }}" class="text-decoration-none">
+                                <span class="badge bg-{% if selected_version and selected_version == version.version %}success{% else %}primary{% endif %}">Version {{ version.version }}</span>
+                            </a>
                             <small class="text-muted float-end">{{ version.date_modified[:10] }}</small>
                         </div>
                         <div class="card-body">
@@ -60,7 +62,12 @@
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-file-text"></i> Content (Latest Version)
+                    <i class="fas fa-file-text"></i> Content 
+                    {% if selected_version %}
+                        (Version {{ selected_version }})
+                    {% else %}
+                        (Latest Version)
+                    {% endif %}
                     <span class="badge bg-primary">v{{ post_versions[0].version }}</span>
                 </h5>
             </div>
@@ -68,7 +75,7 @@
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <strong>Title:</strong><br>
-                        {{ post_versions[0].title or 'Untitled' }}
+                        {{ (post_versions[0].title or 'Untitled') | render_html }}
                     </div>
                     <div class="col-md-6">
                         <strong>Status:</strong><br>
@@ -104,7 +111,7 @@
                 <div class="row mb-3">
                     <div class="col-12">
                         <strong>Excerpt:</strong><br>
-                        <div class="content-html">{{ post_versions[0].excerpt }}</div>
+                        <div class="content-html">{{ post_versions[0].excerpt | render_html }}</div>
                     </div>
                 </div>
                 {% endif %}
@@ -112,7 +119,7 @@
                 <div class="row">
                     <div class="col-12">
                         <strong>Content:</strong><br>
-                        <div class="content-html">{{ post_versions[0].content }}</div>
+                        <div class="content-html">{{ post_versions[0].content | render_html }}</div>
                     </div>
                 </div>
             </div>
@@ -161,7 +168,7 @@
                             </span>
                         </div>
                     </div>
-                    <div class="content-html mt-2">{{ comment.content }}</div>
+                    <div class="content-html mt-2">{{ comment.content | render_html }}</div>
                 </div>
                 {% endfor %}
             </div>

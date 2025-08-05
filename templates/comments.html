@@ -52,7 +52,7 @@
                                     <span class="badge bg-success">Reply</span>
                                 {% endif %}
                             </h6>
-                            <div class="content-html">{{ comment.content }}</div>
+                            <div class="content-html">{{ comment.content | render_html }}</div>
                         </div>
                         <div class="col-md-4">
                             {% if comment.post_title %}

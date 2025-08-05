@@ -32,11 +32,11 @@
             <div class="card-body">
                 <h5 class="card-title">
                     <a href="{{ url_for('user_detail', wp_id=user.wp_id) }}" class="text-decoration-none">
-                        {{ user.name or 'Unknown User' }}
+                        {{ (user.name or 'Unknown User') | render_html }}
                     </a>
                 </h5>
                 {% if user.description %}
-                <p class="card-text content-preview">{{ user.description }}</p>
+                <p class="card-text content-preview">{{ user.description | render_html }}</p>
                 {% endif %}
                 <div class="d-flex justify-content-between align-items-center">
                     <small class="text-muted">

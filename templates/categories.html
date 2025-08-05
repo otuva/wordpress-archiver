@@ -32,11 +32,11 @@
             <div class="card-body">
                 <h5 class="card-title">
                     <a href="{{ url_for('category_detail', wp_id=category.wp_id) }}" class="text-decoration-none">
-                        {{ category.name or 'Unknown Category' }}
+                        {{ (category.name or 'Unknown Category') | render_html }}
                     </a>
                 </h5>
                 {% if category.description %}
-                <p class="card-text content-preview">{{ category.description }}</p>
+                <p class="card-text content-preview">{{ category.description | render_html }}</p>
                 {% endif %}
                 <div class="d-flex justify-content-between align-items-center">
                     <small class="text-muted">

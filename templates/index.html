@@ -12,72 +12,84 @@
 </div>
 
 <div class="row mb-4">
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card stats-card bg-primary text-white">
             <div class="card-body text-center">
                 <i class="fas fa-newspaper fa-2x mb-2"></i>
                 <h3 class="card-title">{{ stats.total_posts }}</h3>
-                <p class="card-text">Posts Archived</p>
+                <p class="card-text">Posts</p>
                 <a href="{{ url_for('posts') }}" class="btn btn-light btn-sm">View Posts</a>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card stats-card bg-success text-white">
             <div class="card-body text-center">
                 <i class="fas fa-file-alt fa-2x mb-2"></i>
                 <h3 class="card-title">{{ stats.total_pages }}</h3>
-                <p class="card-text">Pages Archived</p>
+                <p class="card-text">Pages</p>
                 <a href="{{ url_for('pages') }}" class="btn btn-light btn-sm">View Pages</a>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card stats-card bg-info text-white">
             <div class="card-body text-center">
                 <i class="fas fa-comments fa-2x mb-2"></i>
                 <h3 class="card-title">{{ stats.total_comments }}</h3>
-                <p class="card-text">Comments Archived</p>
+                <p class="card-text">Comments</p>
                 <a href="{{ url_for('comments') }}" class="btn btn-light btn-sm">View Comments</a>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card stats-card bg-secondary text-white">
             <div class="card-body text-center">
                 <i class="fas fa-users fa-2x mb-2"></i>
                 <h3 class="card-title">{{ stats.total_users }}</h3>
-                <p class="card-text">Users Archived</p>
+                <p class="card-text">Users</p>
                 <a href="{{ url_for('users') }}" class="btn btn-light btn-sm">View Users</a>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card stats-card bg-info text-white">
             <div class="card-body text-center">
                 <i class="fas fa-folder fa-2x mb-2"></i>
                 <h3 class="card-title">{{ stats.total_categories }}</h3>
-                <p class="card-text">Categories Archived</p>
+                <p class="card-text">Categories</p>
                 <a href="{{ url_for('categories') }}" class="btn btn-light btn-sm">View Categories</a>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card stats-card bg-warning text-white">
             <div class="card-body text-center">
                 <i class="fas fa-tags fa-2x mb-2"></i>
                 <h3 class="card-title">{{ stats.total_tags }}</h3>
-                <p class="card-text">Tags Archived</p>
+                <p class="card-text">Tags</p>
                 <a href="{{ url_for('tags') }}" class="btn btn-light btn-sm">View Tags</a>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
         <div class="card stats-card bg-dark text-white">
             <div class="card-body text-center">
                 <i class="fas fa-history fa-2x mb-2"></i>
                 <h3 class="card-title">{{ stats.total_posts + stats.total_pages + stats.total_comments + stats.total_users + stats.total_categories + stats.total_tags }}</h3>
                 <p class="card-text">Total Items</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card stats-card bg-success text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-clock fa-2x mb-2"></i>
+                <h3 class="card-title">Archive Sessions</h3>
+                <p class="card-text">View History</p>
                 <a href="{{ url_for('sessions') }}" class="btn btn-light btn-sm">View Sessions</a>
             </div>
         </div>

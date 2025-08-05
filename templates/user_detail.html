@@ -68,7 +68,7 @@
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <strong>Name:</strong><br>
-                        {{ user_versions[0].name or 'Unknown User' }}
+                        {{ (user_versions[0].name or 'Unknown User') | render_html }}
                     </div>
                     <div class="col-md-6">
                         <strong>Slug:</strong><br>
@@ -114,7 +114,7 @@
                 <div class="row mb-3">
                     <div class="col-12">
                         <strong>Description:</strong><br>
-                        <div class="content-html">{{ user_versions[0].description }}</div>
+                        <div class="content-html">{{ user_versions[0].description | render_html }}</div>
                     </div>
                 </div>
                 {% endif %}

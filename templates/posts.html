@@ -26,17 +26,19 @@
     <div class="col-md-6 col-lg-4 mb-4">
         <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span class="badge bg-primary version-badge">v{{ post.version }}</span>
+                <a href="{{ url_for('post_detail', wp_id=post.wp_id) }}" class="text-decoration-none">
+                    <span class="badge bg-primary version-badge">v{{ post.version }}</span>
+                </a>
                 <small class="text-muted">{{ post.date_created[:10] }}</small>
             </div>
             <div class="card-body">
                 <h5 class="card-title">
                     <a href="{{ url_for('post_detail', wp_id=post.wp_id) }}" class="text-decoration-none">
-                        {{ post.title or 'Untitled' }}
+                        {{ (post.title or 'Untitled') | render_html }}
                     </a>
                 </h5>
                 {% if post.excerpt %}
-                <p class="card-text content-preview">{{ post.excerpt }}</p>
+                <p class="card-text content-preview">{{ post.excerpt | render_html }}</p>
                 {% endif %}
                 <div class="d-flex justify-content-between align-items-center">
                     <small class="text-muted">

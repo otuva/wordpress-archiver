@@ -18,6 +18,19 @@ app.config['POSTS_PER_PAGE'] = 10
 app.config['COMMENTS_PER_PAGE'] = 20
 
 
+def render_html(text):
+    """Render HTML content safely."""
+    if not text:
+        return ""
+    # Decode HTML entities
+    import html
+    decoded = html.unescape(text)
+    return decoded
+
+
+app.jinja_env.filters['render_html'] = render_html
+
+
 def get_db_connection():
     """Get database connection."""
     conn = sqlite3.connect(app.config['DATABASE'])
@@ -127,18 +140,29 @@ def posts():
 @app.route('/posts/<int:wp_id>')
 def post_detail(wp_id):
     """Show detailed view of a specific post."""
+    version = request.args.get('version', type=int)
+    
     conn = get_db_connection()
     cursor = conn.cursor()
     
     # Get post details
-    cursor.execute("""
-        SELECT wp_id, title, content, excerpt, author_id, date_created, 
-               date_modified, status, version, created_at
-        FROM posts 
-        WHERE wp_id = ?
-        ORDER BY version DESC
-    """, (wp_id,))
-    post_versions = cursor.fetchall()
+    if version:
+        cursor.execute("""
+            SELECT wp_id, title, content, excerpt, author_id, date_created, 
+                   date_modified, status, version, created_at
+            FROM posts 
+            WHERE wp_id = ? AND version = ?
+        """, (wp_id, version))
+        post_versions = cursor.fetchall()
+    else:
+        cursor.execute("""
+            SELECT wp_id, title, content, excerpt, author_id, date_created, 
+                   date_modified, status, version, created_at
+            FROM posts 
+            WHERE wp_id = ?
+            ORDER BY version DESC
+        """, (wp_id,))
+        post_versions = cursor.fetchall()
     
     if not post_versions:
         conn.close()
@@ -157,7 +181,8 @@ def post_detail(wp_id):
     
     return render_template('post_detail.html', 
                          post_versions=post_versions,
-                         comments=comments)
+                         comments=comments,
+                         selected_version=version)
 
 
 @app.route('/comments')
