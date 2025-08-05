@@ -35,27 +35,39 @@
                 </span>
             </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-md-8">
-                        <h6 class="card-title">
-                            <i class="fas fa-user"></i> {{ comment.author_name or 'Anonymous' }}
-                        </h6>
-                        <div class="content-html">{{ comment.content }}</div>
-                    </div>
-                    <div class="col-md-4">
-                        {% if comment.post_title %}
-                        <div class="mb-2">
-                            <strong>On Post:</strong><br>
-                            <a href="{{ url_for('post_detail', wp_id=comment.post_id) }}" class="text-decoration-none">
-                                {{ comment.post_title }}
-                            </a>
+                                    <div class="row">
+                        <div class="col-md-8">
+                            <h6 class="card-title comment-author">
+                                <i class="fas fa-user"></i> 
+                                {{ comment.author_name or 'Anonymous' }}
+                                {% if comment.author_email %}
+                                    <span class="comment-email">({{ comment.author_email }})</span>
+                                {% endif %}
+                                {% if comment.author_url %}
+                                    <a href="{{ comment.author_url }}" target="_blank" class="comment-url">
+                                        <i class="fas fa-external-link-alt"></i>
+                                    </a>
+                                {% endif %}
+                                {% if comment.parent_id %}
+                                    <span class="badge bg-success">Reply</span>
+                                {% endif %}
+                            </h6>
+                            <div class="content-html">{{ comment.content }}</div>
                         </div>
-                        {% endif %}
-                        <small class="text-muted">
-                            <i class="fas fa-clock"></i> Archived: {{ comment.date_created[:10] }}
-                        </small>
+                        <div class="col-md-4">
+                            {% if comment.post_title %}
+                            <div class="mb-2">
+                                <strong><i class="fas fa-link"></i> On Post:</strong><br>
+                                <a href="{{ url_for('post_detail', wp_id=comment.post_id) }}" class="text-decoration-none">
+                                    {{ comment.post_title }}
+                                </a>
+                            </div>
+                            {% endif %}
+                            <small class="text-muted">
+                                <i class="fas fa-clock"></i> {{ comment.date_created[:10] }}
+                            </small>
+                        </div>
                     </div>
-                </div>
             </div>
         </div>
     </div>

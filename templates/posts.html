@@ -40,7 +40,7 @@
                 {% endif %}
                 <div class="d-flex justify-content-between align-items-center">
                     <small class="text-muted">
-                        <i class="fas fa-user"></i> Author {{ post.author_id }}
+                        <i class="fas fa-user"></i> Author ID: {{ post.author_id }}
                     </small>
                     <span class="badge bg-{{ 'success' if post.status == 'publish' else 'warning' }}">
                         {{ post.status }}
