@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Categories - WordPress Archive Viewer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>
+                <i class="fas fa-folder"></i> Categories ({{ total_categories }})
+            </h1>
+            <form class="d-flex" method="GET">
+                <input class="form-control me-2" type="search" name="search" 
+                       placeholder="Search categories..." value="{{ search }}">
+                <button class="btn btn-outline-primary" type="submit">
+                    <i class="fas fa-search"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% if categories %}
+<div class="row">
+    {% for category in categories %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="badge bg-primary version-badge">v{{ category.version }}</span>
+                <small class="text-muted">{{ category.created_at[:10] }}</small>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">
+                    <a href="{{ url_for('category_detail', wp_id=category.wp_id) }}" class="text-decoration-none">
+                        {{ category.name or 'Unknown Category' }}
+                    </a>
+                </h5>
+                {% if category.description %}
+                <p class="card-text content-preview">{{ category.description }}</p>
+                {% endif %}
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="text-muted">
+                        <i class="fas fa-tag"></i> {{ category.count }} posts
+                    </small>
+                    {% if category.link %}
+                    <a href="{{ category.link }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-external-link-alt"></i> View
+                    </a>
+                    {% endif %}
+                </div>
+                {% if category.parent > 0 %}
+                <small class="text-muted">
+                    <i class="fas fa-level-up-alt"></i> Parent category
+                </small>
+                {% endif %}
+            </div>
+            <div class="card-footer">
+                <small class="text-muted">
+                    <i class="fas fa-clock"></i> Archived: {{ category.created_at[:10] }}
+                </small>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<nav aria-label="Categories pagination">
+    <ul class="pagination justify-content-center">
+        {% if page > 1 %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('categories', page=page-1, search=search) }}">
+                <i class="fas fa-chevron-left"></i> Previous
+            </a>
+        </li>
+        {% endif %}
+        
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+            <li class="page-item active">
+                <span class="page-link">{{ p }}</span>
+            </li>
+            {% elif p <= page + 2 and p >= page - 2 %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('categories', page=p, search=search) }}">{{ p }}</a>
+            </li>
+            {% endif %}
+        {% endfor %}
+        
+        {% if page < total_pages %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('categories', page=page+1, search=search) }}">
+                Next <i class="fas fa-chevron-right"></i>
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-info text-center">
+            <i class="fas fa-info-circle"></i>
+            {% if search %}
+                No categories found matching "{{ search }}"
+            {% else %}
+                No categories have been archived yet.
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if search %}
+<div class="row mt-3">
+    <div class="col-12 text-center">
+        <a href="{{ url_for('categories') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-times"></i> Clear Search
+        </a>
+    </div>
+</div>
+{% endif %}
+{% endblock %} 

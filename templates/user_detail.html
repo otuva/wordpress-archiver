@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}{{ user_versions[0].name or 'Unknown User' }} - WordPress Archive Viewer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('users') }}">
+                        <i class="fas fa-users"></i> Users
+                    </a>
+                </li>
+                <li class="breadcrumb-item active">{{ user_versions[0].name or 'Unknown User' }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-user"></i> 
+            {{ user_versions[0].name or 'Unknown User' }}
+            <span class="badge bg-primary">ID: {{ user_versions[0].wp_id }}</span>
+        </h1>
+    </div>
+</div>
+
+<!-- Version History -->
+{% if user_versions|length > 1 %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="version-history">
+            <h5><i class="fas fa-history"></i> Version History ({{ user_versions|length }} versions)</h5>
+            <div class="row">
+                {% for version in user_versions %}
+                <div class="col-md-4 mb-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="badge bg-primary">Version {{ version.version }}</span>
+                            <small class="text-muted float-end">{{ version.created_at[:10] }}</small>
+                        </div>
+                        <div class="card-body">
+                            <small class="text-muted">Archived: {{ version.created_at[:10] }}</small>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Latest Version Content -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-user-circle"></i> User Information (Latest Version)
+                    <span class="badge bg-primary">v{{ user_versions[0].version }}</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Name:</strong><br>
+                        {{ user_versions[0].name or 'Unknown User' }}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Slug:</strong><br>
+                        {{ user_versions[0].slug or 'N/A' }}
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Website:</strong><br>
+                        {% if user_versions[0].url %}
+                            <a href="{{ user_versions[0].url }}" target="_blank">
+                                <i class="fas fa-external-link-alt"></i> {{ user_versions[0].url }}
+                            </a>
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Profile Link:</strong><br>
+                        {% if user_versions[0].link %}
+                            <a href="{{ user_versions[0].link }}" target="_blank">
+                                <i class="fas fa-external-link-alt"></i> {{ user_versions[0].link }}
+                            </a>
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Archived:</strong><br>
+                        <i class="fas fa-clock"></i> {{ user_versions[0].created_at }}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>User ID:</strong><br>
+                        <i class="fas fa-id-card"></i> {{ user_versions[0].wp_id }}
+                    </div>
+                </div>
+                
+                {% if user_versions[0].description %}
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <strong>Description:</strong><br>
+                        <div class="content-html">{{ user_versions[0].description }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if user_versions[0].avatar_urls %}
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <strong>Avatar URLs:</strong><br>
+                        <small class="text-muted">{{ user_versions[0].avatar_urls }}</small>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if user_versions[0].mpp_avatar %}
+                <div class="row">
+                    <div class="col-12">
+                        <strong>MPP Avatar:</strong><br>
+                        <small class="text-muted">{{ user_versions[0].mpp_avatar }}</small>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12 text-center">
+        <a href="{{ url_for('users') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Users
+        </a>
+    </div>
+</div>
+{% endblock %} 

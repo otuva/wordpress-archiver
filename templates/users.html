@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Users - WordPress Archive Viewer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>
+                <i class="fas fa-users"></i> Users ({{ total_users }})
+            </h1>
+            <form class="d-flex" method="GET">
+                <input class="form-control me-2" type="search" name="search" 
+                       placeholder="Search users..." value="{{ search }}">
+                <button class="btn btn-outline-primary" type="submit">
+                    <i class="fas fa-search"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% if users %}
+<div class="row">
+    {% for user in users %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="badge bg-primary version-badge">v{{ user.version }}</span>
+                <small class="text-muted">{{ user.created_at[:10] }}</small>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">
+                    <a href="{{ url_for('user_detail', wp_id=user.wp_id) }}" class="text-decoration-none">
+                        {{ user.name or 'Unknown User' }}
+                    </a>
+                </h5>
+                {% if user.description %}
+                <p class="card-text content-preview">{{ user.description }}</p>
+                {% endif %}
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="text-muted">
+                        <i class="fas fa-user"></i> ID: {{ user.wp_id }}
+                    </small>
+                    {% if user.url %}
+                    <a href="{{ user.url }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-external-link-alt"></i> Website
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-footer">
+                <small class="text-muted">
+                    <i class="fas fa-clock"></i> Archived: {{ user.created_at[:10] }}
+                </small>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<nav aria-label="Users pagination">
+    <ul class="pagination justify-content-center">
+        {% if page > 1 %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('users', page=page-1, search=search) }}">
+                <i class="fas fa-chevron-left"></i> Previous
+            </a>
+        </li>
+        {% endif %}
+        
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+            <li class="page-item active">
+                <span class="page-link">{{ p }}</span>
+            </li>
+            {% elif p <= page + 2 and p >= page - 2 %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('users', page=p, search=search) }}">{{ p }}</a>
+            </li>
+            {% endif %}
+        {% endfor %}
+        
+        {% if page < total_pages %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('users', page=page+1, search=search) }}">
+                Next <i class="fas fa-chevron-right"></i>
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-info text-center">
+            <i class="fas fa-info-circle"></i>
+            {% if search %}
+                No users found matching "{{ search }}"
+            {% else %}
+                No users have been archived yet.
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if search %}
+<div class="row mt-3">
+    <div class="col-12 text-center">
+        <a href="{{ url_for('users') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-times"></i> Clear Search
+        </a>
+    </div>
+</div>
+{% endif %}
+{% endblock %} 

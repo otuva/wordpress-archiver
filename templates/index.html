@@ -43,10 +43,40 @@
         </div>
     </div>
     <div class="col-md-3">
+        <div class="card stats-card bg-secondary text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-users fa-2x mb-2"></i>
+                <h3 class="card-title">{{ stats.total_users }}</h3>
+                <p class="card-text">Users Archived</p>
+                <a href="{{ url_for('users') }}" class="btn btn-light btn-sm">View Users</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card bg-info text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-folder fa-2x mb-2"></i>
+                <h3 class="card-title">{{ stats.total_categories }}</h3>
+                <p class="card-text">Categories Archived</p>
+                <a href="{{ url_for('categories') }}" class="btn btn-light btn-sm">View Categories</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
         <div class="card stats-card bg-warning text-white">
             <div class="card-body text-center">
+                <i class="fas fa-tags fa-2x mb-2"></i>
+                <h3 class="card-title">{{ stats.total_tags }}</h3>
+                <p class="card-text">Tags Archived</p>
+                <a href="{{ url_for('tags') }}" class="btn btn-light btn-sm">View Tags</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card bg-dark text-white">
+            <div class="card-body text-center">
                 <i class="fas fa-history fa-2x mb-2"></i>
-                <h3 class="card-title">{{ stats.total_posts + stats.total_pages + stats.total_comments }}</h3>
+                <h3 class="card-title">{{ stats.total_posts + stats.total_pages + stats.total_comments + stats.total_users + stats.total_categories + stats.total_tags }}</h3>
                 <p class="card-text">Total Items</p>
                 <a href="{{ url_for('sessions') }}" class="btn btn-light btn-sm">View Sessions</a>
             </div>
