@@ -134,7 +134,7 @@ def post_detail(wp_id):
     
     # Get comments for this post
     cursor.execute("""
-        SELECT wp_id, author_name, content, date_created, status, version
+        SELECT wp_id, author_name, author_email, author_url, content, date_created, status, version, parent_id
         FROM comments 
         WHERE post_id = ?
         ORDER BY date_created ASC
@@ -172,8 +172,8 @@ def comments():
     
     # Get comments for current page
     query = f"""
-        SELECT c.wp_id, c.author_name, c.content, c.date_created, c.status, 
-               c.version, p.title as post_title, p.wp_id as post_id
+        SELECT c.wp_id, c.author_name, c.author_email, c.author_url, c.content, c.date_created, c.status, 
+               c.version, c.parent_id, p.title as post_title, p.wp_id as post_id
         FROM comments c
         LEFT JOIN posts p ON c.post_id = p.wp_id
         {where_clause}

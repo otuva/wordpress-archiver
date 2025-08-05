@@ -36,7 +36,7 @@ class WordPressArchiver:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS posts (
                     id INTEGER PRIMARY KEY,
-                    wp_id INTEGER UNIQUE,
+                    wp_id INTEGER,
                     title TEXT,
                     content TEXT,
                     excerpt TEXT,
@@ -46,7 +46,8 @@ class WordPressArchiver:
                     status TEXT,
                     content_hash TEXT,
                     version INTEGER DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(wp_id, version)
                 )
             ''')
             
@@ -54,17 +55,21 @@ class WordPressArchiver:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS comments (
                     id INTEGER PRIMARY KEY,
-                    wp_id INTEGER UNIQUE,
+                    wp_id INTEGER,
                     post_id INTEGER,
+                    parent_id INTEGER,
                     author_name TEXT,
                     author_email TEXT,
+                    author_url TEXT,
                     content TEXT,
                     date_created TEXT,
                     status TEXT,
                     content_hash TEXT,
                     version INTEGER DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (post_id) REFERENCES posts (wp_id)
+                    UNIQUE(wp_id, version),
+                    FOREIGN KEY (post_id) REFERENCES posts (wp_id),
+                    FOREIGN KEY (parent_id) REFERENCES comments (wp_id)
                 )
             ''')
             
@@ -72,7 +77,7 @@ class WordPressArchiver:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS pages (
                     id INTEGER PRIMARY KEY,
-                    wp_id INTEGER UNIQUE,
+                    wp_id INTEGER,
                     title TEXT,
                     content TEXT,
                     excerpt TEXT,
@@ -82,7 +87,8 @@ class WordPressArchiver:
                     status TEXT,
                     content_hash TEXT,
                     version INTEGER DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(wp_id, version)
                 )
             ''')
             
@@ -236,14 +242,16 @@ class WordPressArchiver:
                                     # Content changed, create new version
                                     cursor.execute('''
                                         INSERT INTO comments 
-                                        (wp_id, post_id, author_name, author_email, content, 
+                                        (wp_id, post_id, parent_id, author_name, author_email, author_url, content, 
                                          date_created, status, content_hash, version)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                     ''', (
                                         comment['id'],
                                         comment.get('post', 0),
+                                        comment.get('parent', 0),
                                         comment.get('author_name', ''),
                                         comment.get('author_email', ''),
+                                        comment.get('author_url', ''),
                                         content,
                                         comment.get('date', ''),
                                         comment.get('status', ''),
@@ -256,14 +264,16 @@ class WordPressArchiver:
                                 # New comment
                                 cursor.execute('''
                                     INSERT INTO comments 
-                                    (wp_id, post_id, author_name, author_email, content, 
+                                    (wp_id, post_id, parent_id, author_name, author_email, author_url, content, 
                                      date_created, status, content_hash, version)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 ''', (
                                     comment['id'],
                                     comment.get('post', 0),
+                                    comment.get('parent', 0),
                                     comment.get('author_name', ''),
                                     comment.get('author_email', ''),
+                                    comment.get('author_url', ''),
                                     content,
                                     comment.get('date', ''),
                                     comment.get('status', ''),
