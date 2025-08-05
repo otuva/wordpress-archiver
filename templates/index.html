@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}Home - WordPress Archive Viewer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-archive"></i> WordPress Archive Dashboard
+        </h1>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card stats-card bg-primary text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-newspaper fa-2x mb-2"></i>
+                <h3 class="card-title">{{ stats.total_posts }}</h3>
+                <p class="card-text">Posts Archived</p>
+                <a href="{{ url_for('posts') }}" class="btn btn-light btn-sm">View Posts</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card bg-success text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-file-alt fa-2x mb-2"></i>
+                <h3 class="card-title">{{ stats.total_pages }}</h3>
+                <p class="card-text">Pages Archived</p>
+                <a href="{{ url_for('pages') }}" class="btn btn-light btn-sm">View Pages</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card bg-info text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-comments fa-2x mb-2"></i>
+                <h3 class="card-title">{{ stats.total_comments }}</h3>
+                <p class="card-text">Comments Archived</p>
+                <a href="{{ url_for('comments') }}" class="btn btn-light btn-sm">View Comments</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card bg-warning text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-history fa-2x mb-2"></i>
+                <h3 class="card-title">{{ stats.total_posts + stats.total_pages + stats.total_comments }}</h3>
+                <p class="card-text">Total Items</p>
+                <a href="{{ url_for('sessions') }}" class="btn btn-light btn-sm">View Sessions</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if stats.latest_session %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-clock"></i> Latest Archive Session
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <strong>Date:</strong><br>
+                        {{ stats.latest_session[0] }}
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Content Type:</strong><br>
+                        <span class="badge bg-primary">{{ stats.latest_session[1] }}</span>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Processed:</strong><br>
+                        {{ stats.latest_session[2] }} items
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Results:</strong><br>
+                        <span class="badge bg-success">{{ stats.latest_session[3] }} new</span>
+                        <span class="badge bg-warning">{{ stats.latest_session[4] }} updated</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-search"></i> Quick Search
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="GET" action="{{ url_for('posts') }}">
+                    <div class="input-group">
+                        <input type="text" class="form-control" name="search" 
+                               placeholder="Search posts, pages, or comments..." required>
+                        <button class="btn btn-primary" type="submit">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle"></i> About This Archive
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>This archive contains all the WordPress content that has been backed up locally. 
+                The system automatically handles:</p>
+                <ul>
+                    <li><strong>Duplicate Prevention:</strong> Content is hashed to prevent storing duplicates</li>
+                    <li><strong>Version Control:</strong> When content changes, new versions are saved</li>
+                    <li><strong>Complete History:</strong> All versions of content are preserved</li>
+                    <li><strong>Search & Browse:</strong> Easy navigation through all archived content</li>
+                </ul>
+                <p class="mb-0">
+                    <small class="text-muted">
+                        Use the navigation menu above to browse different types of content, 
+                        or use the search function to find specific content.
+                    </small>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
