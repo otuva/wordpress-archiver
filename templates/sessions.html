@@ -41,7 +41,21 @@
                                     {{ session.session_date }}
                                 </td>
                                 <td>
-                                    <span class="badge bg-primary">{{ session.content_type }}</span>
+                                    {% if session.content_type == 'posts' %}
+                                        <span class="badge bg-primary">{{ session.content_type }}</span>
+                                    {% elif session.content_type == 'comments' %}
+                                        <span class="badge bg-info">{{ session.content_type }}</span>
+                                    {% elif session.content_type == 'pages' %}
+                                        <span class="badge bg-success">{{ session.content_type }}</span>
+                                    {% elif session.content_type == 'users' %}
+                                        <span class="badge bg-secondary">{{ session.content_type }}</span>
+                                    {% elif session.content_type == 'categories' %}
+                                        <span class="badge bg-info">{{ session.content_type }}</span>
+                                    {% elif session.content_type == 'tags' %}
+                                        <span class="badge bg-warning">{{ session.content_type }}</span>
+                                    {% else %}
+                                        <span class="badge bg-primary">{{ session.content_type }}</span>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     <span class="badge bg-info">{{ session.items_processed }}</span>
@@ -122,28 +136,55 @@
                     {% set posts_sessions = sessions|selectattr('content_type', 'equalto', 'posts')|list %}
                     {% set comments_sessions = sessions|selectattr('content_type', 'equalto', 'comments')|list %}
                     {% set pages_sessions = sessions|selectattr('content_type', 'equalto', 'pages')|list %}
+                    {% set users_sessions = sessions|selectattr('content_type', 'equalto', 'users')|list %}
+                    {% set categories_sessions = sessions|selectattr('content_type', 'equalto', 'categories')|list %}
+                    {% set tags_sessions = sessions|selectattr('content_type', 'equalto', 'tags')|list %}
                     
-                    <div class="col-md-4 text-center">
+                    <div class="col-md-2 text-center">
                         <div class="card bg-primary text-white">
                             <div class="card-body">
                                 <h5>{{ posts_sessions|length }}</h5>
-                                <p class="mb-0">Post Sessions</p>
+                                <p class="mb-0">Posts</p>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4 text-center">
+                    <div class="col-md-2 text-center">
                         <div class="card bg-info text-white">
                             <div class="card-body">
                                 <h5>{{ comments_sessions|length }}</h5>
-                                <p class="mb-0">Comment Sessions</p>
+                                <p class="mb-0">Comments</p>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4 text-center">
+                    <div class="col-md-2 text-center">
                         <div class="card bg-success text-white">
                             <div class="card-body">
                                 <h5>{{ pages_sessions|length }}</h5>
-                                <p class="mb-0">Page Sessions</p>
+                                <p class="mb-0">Pages</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2 text-center">
+                        <div class="card bg-secondary text-white">
+                            <div class="card-body">
+                                <h5>{{ users_sessions|length }}</h5>
+                                <p class="mb-0">Users</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2 text-center">
+                        <div class="card bg-info text-white">
+                            <div class="card-body">
+                                <h5>{{ categories_sessions|length }}</h5>
+                                <p class="mb-0">Categories</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2 text-center">
+                        <div class="card bg-warning text-white">
+                            <div class="card-body">
+                                <h5>{{ tags_sessions|length }}</h5>
+                                <p class="mb-0">Tags</p>
                             </div>
                         </div>
                     </div>
