@@ -10,6 +10,9 @@ A Python CLI application for archiving WordPress content locally using SQLite. T
 - **Multiple Content Types**: Archive posts, comments, and pages
 - **Session Tracking**: Tracks archive sessions with statistics
 - **Error Handling**: Robust error handling with detailed logging
+- **Web Interface**: Modern Flask web application to browse and search archived content
+- **Search Functionality**: Search across all content types
+- **Version History**: View all versions of content with change tracking
 
 ## Installation
 
@@ -21,12 +24,21 @@ A Python CLI application for archiving WordPress content locally using SQLite. T
 
 ## Usage
 
-### Basic Usage
+### Command Line Archiver
 
 Archive all content from a WordPress site:
 ```bash
 python main.py https://example.com
 ```
+
+### Web Viewer
+
+Start the Flask web application to browse archived content:
+```bash
+python app.py
+```
+
+Then open your browser to `http://localhost:5000`
 
 ### Command Line Options
 
@@ -108,6 +120,16 @@ The application creates the following tables:
 3. **Version Control**: When content changes, a new version is created with an incremented version number
 4. **Session Tracking**: Each archive session is logged with statistics
 
+## Database Migration
+
+If you have an existing database from a previous version, you may need to migrate it to support multiple versions of the same content:
+
+```bash
+python migrate_db.py wordpress_archive.db
+```
+
+This migration changes the unique constraint from `wp_id` to `(wp_id, version)` to allow storing multiple versions of the same content.
+
 ## Error Handling
 
 The application includes comprehensive error handling:
@@ -120,6 +142,7 @@ The application includes comprehensive error handling:
 
 - Python 3.6+
 - `requests` library
+- `flask` library
 - SQLite3 (included with Python)
 
 ## License
