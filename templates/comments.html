@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Comments - WordPress Archive Viewer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>
+                <i class="fas fa-comments"></i> Comments ({{ total_comments }})
+            </h1>
+            <form class="d-flex" method="GET">
+                <input class="form-control me-2" type="search" name="search" 
+                       placeholder="Search comments..." value="{{ search }}">
+                <button class="btn btn-outline-primary" type="submit">
+                    <i class="fas fa-search"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% if comments %}
+<div class="row">
+    {% for comment in comments %}
+    <div class="col-12 mb-3">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="badge bg-primary version-badge">v{{ comment.version }}</span>
+                    <small class="text-muted ms-2">{{ comment.date_created[:10] }}</small>
+                </div>
+                <span class="badge bg-{{ 'success' if comment.status == 'approved' else 'warning' }}">
+                    {{ comment.status }}
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h6 class="card-title">
+                            <i class="fas fa-user"></i> {{ comment.author_name or 'Anonymous' }}
+                        </h6>
+                        <div class="content-html">{{ comment.content }}</div>
+                    </div>
+                    <div class="col-md-4">
+                        {% if comment.post_title %}
+                        <div class="mb-2">
+                            <strong>On Post:</strong><br>
+                            <a href="{{ url_for('post_detail', wp_id=comment.post_id) }}" class="text-decoration-none">
+                                {{ comment.post_title }}
+                            </a>
+                        </div>
+                        {% endif %}
+                        <small class="text-muted">
+                            <i class="fas fa-clock"></i> Archived: {{ comment.date_created[:10] }}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<nav aria-label="Comments pagination">
+    <ul class="pagination justify-content-center">
+        {% if page > 1 %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('comments', page=page-1, search=search) }}">
+                <i class="fas fa-chevron-left"></i> Previous
+            </a>
+        </li>
+        {% endif %}
+        
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+            <li class="page-item active">
+                <span class="page-link">{{ p }}</span>
+            </li>
+            {% elif p <= page + 2 and p >= page - 2 %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('comments', page=p, search=search) }}">{{ p }}</a>
+            </li>
+            {% endif %}
+        {% endfor %}
+        
+        {% if page < total_pages %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('comments', page=page+1, search=search) }}">
+                Next <i class="fas fa-chevron-right"></i>
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-info text-center">
+            <i class="fas fa-info-circle"></i>
+            {% if search %}
+                No comments found matching "{{ search }}"
+            {% else %}
+                No comments have been archived yet.
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if search %}
+<div class="row mt-3">
+    <div class="col-12 text-center">
+        <a href="{{ url_for('comments') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-times"></i> Clear Search
+        </a>
+    </div>
+</div>
+{% endif %}
+{% endblock %} 

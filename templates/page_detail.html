@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_versions[0].title or 'Untitled' }} - WordPress Archive Viewer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('pages') }}">
+                        <i class="fas fa-file-alt"></i> Pages
+                    </a>
+                </li>
+                <li class="breadcrumb-item active">{{ page_versions[0].title or 'Untitled' }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-file-alt"></i> 
+            {{ page_versions[0].title or 'Untitled' }}
+            <span class="badge bg-primary">ID: {{ page_versions[0].wp_id }}</span>
+        </h1>
+    </div>
+</div>
+
+<!-- Version History -->
+{% if page_versions|length > 1 %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="version-history">
+            <h5><i class="fas fa-history"></i> Version History ({{ page_versions|length }} versions)</h5>
+            <div class="row">
+                {% for version in page_versions %}
+                <div class="col-md-4 mb-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="badge bg-primary">Version {{ version.version }}</span>
+                            <small class="text-muted float-end">{{ version.date_modified[:10] }}</small>
+                        </div>
+                        <div class="card-body">
+                            <small class="text-muted">Archived: {{ version.created_at[:10] }}</small>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Latest Version Content -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-file-text"></i> Content (Latest Version)
+                    <span class="badge bg-primary">v{{ page_versions[0].version }}</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Title:</strong><br>
+                        {{ page_versions[0].title or 'Untitled' }}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Status:</strong><br>
+                        <span class="badge bg-{{ 'success' if page_versions[0].status == 'publish' else 'warning' }}">
+                            {{ page_versions[0].status }}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Created:</strong><br>
+                        {{ page_versions[0].date_created }}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Modified:</strong><br>
+                        {{ page_versions[0].date_modified }}
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Author ID:</strong><br>
+                        {{ page_versions[0].author_id }}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Archived:</strong><br>
+                        {{ page_versions[0].created_at }}
+                    </div>
+                </div>
+                
+                {% if page_versions[0].excerpt %}
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <strong>Excerpt:</strong><br>
+                        <div class="content-html">{{ page_versions[0].excerpt }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <div class="row">
+                    <div class="col-12">
+                        <strong>Content:</strong><br>
+                        <div class="content-html">{{ page_versions[0].content }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12 text-center">
+        <a href="{{ url_for('pages') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Pages
+        </a>
+    </div>
+</div>
+{% endblock %} 

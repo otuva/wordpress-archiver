@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Archive Sessions - WordPress Archive Viewer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-history"></i> Archive Sessions
+        </h1>
+    </div>
+</div>
+
+{% if sessions %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-list"></i> Recent Archive Sessions (Last 50)
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Content Type</th>
+                                <th>Processed</th>
+                                <th>New</th>
+                                <th>Updated</th>
+                                <th>Errors</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for session in sessions %}
+                            <tr>
+                                <td>
+                                    <i class="fas fa-clock"></i>
+                                    {{ session.session_date }}
+                                </td>
+                                <td>
+                                    <span class="badge bg-primary">{{ session.content_type }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">{{ session.items_processed }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-success">{{ session.items_new }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-warning">{{ session.items_updated }}</span>
+                                </td>
+                                <td>
+                                    {% if session.errors and session.errors != '[]' %}
+                                        <span class="badge bg-danger">Yes</span>
+                                    {% else %}
+                                        <span class="badge bg-success">No</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Statistics -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-bar"></i> Session Summary
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 text-center">
+                        <h4 class="text-primary">{{ sessions|length }}</h4>
+                        <p class="text-muted">Total Sessions</p>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h4 class="text-info">
+                            {{ sessions|sum(attribute='items_processed') }}
+                        </h4>
+                        <p class="text-muted">Total Items Processed</p>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h4 class="text-success">
+                            {{ sessions|sum(attribute='items_new') }}
+                        </h4>
+                        <p class="text-muted">Total New Items</p>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h4 class="text-warning">
+                            {{ sessions|sum(attribute='items_updated') }}
+                        </h4>
+                        <p class="text-muted">Total Updated Items</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Content Type Breakdown -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-pie"></i> Content Type Breakdown
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% set posts_sessions = sessions|selectattr('content_type', 'equalto', 'posts')|list %}
+                    {% set comments_sessions = sessions|selectattr('content_type', 'equalto', 'comments')|list %}
+                    {% set pages_sessions = sessions|selectattr('content_type', 'equalto', 'pages')|list %}
+                    
+                    <div class="col-md-4 text-center">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body">
+                                <h5>{{ posts_sessions|length }}</h5>
+                                <p class="mb-0">Post Sessions</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="card bg-info text-white">
+                            <div class="card-body">
+                                <h5>{{ comments_sessions|length }}</h5>
+                                <p class="mb-0">Comment Sessions</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="card bg-success text-white">
+                            <div class="card-body">
+                                <h5>{{ pages_sessions|length }}</h5>
+                                <p class="mb-0">Page Sessions</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-info text-center">
+            <i class="fas fa-info-circle"></i>
+            No archive sessions found. Run the archiver to create sessions.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row mt-4">
+    <div class="col-12 text-center">
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-home"></i> Back to Dashboard
+        </a>
+    </div>
+</div>
+{% endblock %} 
