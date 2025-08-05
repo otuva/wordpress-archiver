@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import sys
+import signal
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from api import WordPressAPI
@@ -748,6 +749,36 @@ class WordPressArchiver:
             ))
             conn.commit()
     
+    def save_comprehensive_session_stats(self, domain: str, content_types: List[str], all_stats: Dict[str, Dict[str, int]]):
+        """Save comprehensive session statistics for a complete archive operation."""
+        total_processed = sum(stats["processed"] for stats in all_stats.values())
+        total_new = sum(stats["new"] for stats in all_stats.values())
+        total_updated = sum(stats["updated"] for stats in all_stats.values())
+        total_errors = sum(stats["errors"] for stats in all_stats.values())
+        
+        # Create a summary of what was archived
+        content_summary = []
+        for content_type, stats in all_stats.items():
+            if stats["processed"] > 0:
+                content_summary.append(f"{content_type}: {stats['processed']} processed, {stats['new']} new, {stats['updated']} updated")
+        
+        session_description = f"Archive of {domain} - {', '.join(content_types)}"
+        
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO archive_sessions 
+                (content_type, items_processed, items_new, items_updated, errors)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (
+                session_description,
+                total_processed,
+                total_new,
+                total_updated,
+                json.dumps(content_summary) if total_errors == 0 else json.dumps(content_summary + ["Errors occurred"])
+            ))
+            conn.commit()
+    
     def get_stats(self) -> Dict[str, Any]:
         """Get overall archive statistics."""
         with sqlite3.connect(self.db_path) as conn:
@@ -793,6 +824,15 @@ class WordPressArchiver:
 
 
 def main():
+    # Set up signal handler for graceful interrupt
+    def signal_handler(sig, frame):
+        print("\n\n⚠️  Archive operation interrupted by user (Ctrl+C)")
+        print("💾 Progress has been saved. You can resume later.")
+        print("📊 Check the web interface to see what was archived.")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    
     parser = argparse.ArgumentParser(
         description="WordPress Content Archiver - Archive WordPress content locally using SQLite"
     )
@@ -862,6 +902,13 @@ def main():
     else:
         content_types = [args.content_type]
     
+    print(f"\n🚀 Starting archive operation for: {args.domain}")
+    print(f"📋 Content types to archive: {', '.join(content_types)}")
+    if args.limit:
+        print(f"🔢 Processing limit: {args.limit} items per type")
+    print("=" * 60)
+    
+    all_stats = {}
     for content_type in content_types:
         print(f"\n=== Archiving {content_type.upper()} ===")
         
@@ -879,19 +926,33 @@ def main():
             elif content_type == "tags":
                 stats = archiver.archive_tags(api, args.limit)
             
-            # Save session stats
-            archiver.save_session_stats(content_type, stats)
+            # Store stats for comprehensive session
+            all_stats[content_type] = stats
             
-            print(f"\n{content_type.title()} Archive Summary:")
-            print(f"  Processed: {stats['processed']}")
-            print(f"  New: {stats['new']}")
-            print(f"  Updated: {stats['updated']}")
-            print(f"  Errors: {stats['errors']}")
+            # Only save individual session for single content type operations
+            if len(content_types) == 1:
+                archiver.save_session_stats(content_type, stats)
             
+            print(f"\n✅ {content_type.title()} Archive Summary:")
+            print(f"  📊 Processed: {stats['processed']}")
+            print(f"  ➕ New: {stats['new']}")
+            print(f"  🔄 Updated: {stats['updated']}")
+            print(f"  ❌ Errors: {stats['errors']}")
+            
+        except KeyboardInterrupt:
+            print(f"\n⚠️  Archive operation interrupted during {content_type} processing")
+            print("💾 Progress has been saved. You can resume later.")
+            sys.exit(0)
         except Exception as e:
-            print(f"Error archiving {content_type}: {e}")
+            print(f"❌ Error archiving {content_type}: {e}")
+            all_stats[content_type] = {"processed": 0, "new": 0, "updated": 0, "errors": 1}
     
-    print(f"\nArchive completed! Database: {args.db}")
+    # Save comprehensive session stats for multiple content types
+    if len(content_types) > 1:
+        archiver.save_comprehensive_session_stats(args.domain, content_types, all_stats)
+    
+    print(f"\n🎉 Archive completed! Database: {args.db}")
+    print("🌐 Run 'python3 app.py' to view the archived content in your browser.")
 
 
 if __name__ == "__main__":

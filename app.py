@@ -22,10 +22,11 @@ def render_html(text):
     """Render HTML content safely."""
     if not text:
         return ""
-    # Decode HTML entities
+    # Decode HTML entities and mark as safe for rendering
     import html
     decoded = html.unescape(text)
-    return decoded
+    from markupsafe import Markup
+    return Markup(decoded)
 
 
 app.jinja_env.filters['render_html'] = render_html
@@ -528,6 +529,38 @@ def sessions():
     conn.close()
     
     return render_template('sessions.html', sessions=sessions)
+
+
+@app.route('/sessions/<int:session_id>')
+def session_detail(session_id):
+    """Show detailed view of a specific session."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Get session details
+    cursor.execute("""
+        SELECT session_date, content_type, items_processed, items_new, 
+               items_updated, errors
+        FROM archive_sessions 
+        WHERE id = ?
+    """, (session_id,))
+    session = cursor.fetchone()
+    
+    if not session:
+        conn.close()
+        return "Session not found", 404
+    
+    # Parse errors if they exist
+    errors_data = []
+    if session.errors and session.errors != '[]':
+        try:
+            errors_data = json.loads(session.errors)
+        except:
+            errors_data = [session.errors]
+    
+    conn.close()
+    
+    return render_template('session_detail.html', session=session, errors_data=errors_data)
 
 
 @app.route('/api/stats')

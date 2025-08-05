@@ -35,7 +35,7 @@
                         </thead>
                         <tbody>
                             {% for session in sessions %}
-                            <tr>
+                            <tr class="session-row" style="cursor: pointer;" data-session-url="{{ url_for('session_detail', session_id=session.id) }}">
                                 <td>
                                     <i class="fas fa-clock"></i>
                                     {{ session.session_date }}
@@ -53,6 +53,8 @@
                                         <span class="badge bg-info">{{ session.content_type }}</span>
                                     {% elif session.content_type == 'tags' %}
                                         <span class="badge bg-warning">{{ session.content_type }}</span>
+                                    {% elif 'Archive of' in session.content_type %}
+                                        <span class="badge bg-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ session.content_type }}">Complete Archive</span>
                                     {% else %}
                                         <span class="badge bg-primary">{{ session.content_type }}</span>
                                     {% endif %}
@@ -212,4 +214,26 @@
         </a>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Bootstrap tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+    
+    // Handle session row clicks
+    document.querySelectorAll('.session-row').forEach(function(row) {
+        row.addEventListener('click', function() {
+            var url = this.getAttribute('data-session-url');
+            if (url) {
+                window.location.href = url;
+            }
+        });
+    });
+});
+</script>
 {% endblock %} 
