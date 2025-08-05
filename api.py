@@ -125,3 +125,27 @@ class WordPressAPI:
         :return: Page details
         """
         return self._make_request("GET", f"pages/{page_id}")
+
+    def get_users(self, page=1, per_page=10, after=None):
+        """
+        Retrieve a paginated list of users ordered by date ascending.
+
+        :param page: Page number to fetch
+        :param per_page: Number of users per page (default: 10)
+        :param after: ISO 8601 formatted date-time string to fetch users after this date
+        :return: WordPressResponse object
+        """
+        params = {"page": page, "per_page": per_page,
+                  "orderby": "registered", "order": "asc"}
+        if after:
+            params["after"] = after
+        return self._make_request("GET", "users", params=params)
+
+    def get_user(self, user_id):
+        """
+        Retrieve a single user by their ID.
+
+        :param user_id: ID of the user to fetch
+        :return: User details
+        """
+        return self._make_request("GET", f"users/{user_id}")
