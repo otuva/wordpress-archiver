@@ -189,3 +189,80 @@ class WordPressAPI:
         :return: Tag details
         """
         return self._make_request("GET", f"tags/{tag_id}")
+
+    def verify_wordpress_site(self) -> bool:
+        """
+        Verify that the given site is actually a WordPress site.
+        
+        Returns:
+            bool: True if it's a WordPress site, False otherwise
+        """
+        try:
+            print(f"   Checking WordPress REST API...")
+            # Check if the site has WordPress REST API
+            response = requests.get(f"{self.base_url}/wp-json/", timeout=10)
+            
+            if response.status_code == 200:
+                # Check if it returns WordPress API info
+                try:
+                    api_info = response.json()
+                    if 'namespaces' in api_info and 'wp/v2' in api_info.get('namespaces', []):
+                        print(f"   ✅ WordPress REST API found")
+                        return True
+                except (ValueError, KeyError):
+                    pass
+            
+            print(f"   ⚠️  WordPress REST API not found, checking HTML content...")
+            # Alternative check: look for WordPress-specific headers or meta tags
+            response = requests.get(self.base_url, timeout=10)
+            if response.status_code == 200:
+                content = response.text.lower()
+                wordpress_indicators = [
+                    'wp-content',
+                    'wp-includes', 
+                    'wordpress',
+                    'wp-json',
+                    'wp-admin'
+                ]
+                
+                found_indicators = []
+                for indicator in wordpress_indicators:
+                    if indicator in content:
+                        found_indicators.append(indicator)
+                
+                if found_indicators:
+                    print(f"   ✅ WordPress indicators found: {', '.join(found_indicators)}")
+                    return True
+            
+            # Check for common WordPress endpoints
+            print(f"   ⚠️  Checking common WordPress endpoints...")
+            endpoints_to_check = [
+                '/wp-admin/',
+                '/wp-content/',
+                '/wp-includes/',
+                '/wp-config.php',
+                '/xmlrpc.php'
+            ]
+            
+            for endpoint in endpoints_to_check:
+                try:
+                    response = requests.head(f"{self.base_url}{endpoint}", timeout=5)
+                    if response.status_code in [200, 403, 401]:  # 403/401 means it exists but access denied
+                        print(f"   ✅ Found WordPress endpoint: {endpoint}")
+                        return True
+                except:
+                    continue
+            
+            print(f"❌ Error: {self.base_url} does not appear to be a WordPress site")
+            print("   - No WordPress REST API found")
+            print("   - No WordPress indicators found in HTML")
+            print("   - No common WordPress endpoints found")
+            return False
+            
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Error: Cannot connect to {self.base_url}")
+            print(f"   - Network error: {e}")
+            return False
+        except Exception as e:
+            print(f"❌ Error: Unexpected error while verifying site: {e}")
+            return False
