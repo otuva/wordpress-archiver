@@ -749,7 +749,7 @@ class WordPressArchiver:
             ))
             conn.commit()
     
-    def save_comprehensive_session_stats(self, domain: str, content_types: List[str], all_stats: Dict[str, Dict[str, int]]):
+    def save_comprehensive_session_stats(self, domain: str, content_types: List[str], all_stats: Dict[str, Dict[str, int]], interrupted: bool = False):
         """Save comprehensive session statistics for a complete archive operation."""
         total_processed = sum(stats["processed"] for stats in all_stats.values())
         total_new = sum(stats["new"] for stats in all_stats.values())
@@ -762,7 +762,10 @@ class WordPressArchiver:
             if stats["processed"] > 0:
                 content_summary.append(f"{content_type}: {stats['processed']} processed, {stats['new']} new, {stats['updated']} updated")
         
-        session_description = f"Archive of {domain} - {', '.join(content_types)}"
+        if interrupted:
+            session_description = f"INTERRUPTED - Archive of {domain} - {', '.join(content_types)}"
+        else:
+            session_description = f"Archive of {domain} - {', '.join(content_types)}"
         
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -776,6 +779,25 @@ class WordPressArchiver:
                 total_new,
                 total_updated,
                 json.dumps(content_summary) if total_errors == 0 else json.dumps(content_summary + ["Errors occurred"])
+            ))
+            conn.commit()
+    
+    def save_failed_verification_session(self, domain: str, reason: str):
+        """Save a session for failed WordPress verification."""
+        session_description = f"FAILED VERIFICATION - {domain} - {reason}"
+        
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO archive_sessions 
+                (content_type, items_processed, items_new, items_updated, errors)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (
+                session_description,
+                0,  # No items processed
+                0,  # No new items
+                0,  # No updated items
+                json.dumps([f"Verification failed: {reason}"])
             ))
             conn.commit()
     
@@ -805,7 +827,7 @@ class WordPressArchiver:
             
             # Get latest session
             cursor.execute("""
-                SELECT session_date, content_type, items_processed, items_new, items_updated, errors
+                SELECT id, session_date, content_type, items_processed, items_new, items_updated, errors
                 FROM archive_sessions 
                 ORDER BY session_date DESC 
                 LIMIT 1
@@ -893,6 +915,23 @@ def main():
         print(f"Connecting to WordPress site: {args.domain}")
     except Exception as e:
         print(f"Error connecting to WordPress site: {e}")
+        
+        # Save a session for the connection failure
+        archiver = WordPressArchiver(args.db)
+        archiver.save_failed_verification_session(args.domain, f"Connection failed: {e}")
+        
+        sys.exit(1)
+    
+    # Verify that it's actually a WordPress site
+    print(f"\n🔍 Verifying WordPress site...")
+    if not api.verify_wordpress_site():
+        print(f"\n❌ Cannot proceed: {args.domain} is not a valid WordPress site")
+        print("   Please provide a valid WordPress site URL")
+        print("   Example: https://wordpress.org")
+        
+        # Save a session for the failed verification
+        archiver.save_failed_verification_session(args.domain, "Not a WordPress site")
+        
         sys.exit(1)
     
     # Archive content based on type
@@ -941,6 +980,12 @@ def main():
             
         except KeyboardInterrupt:
             print(f"\n⚠️  Archive operation interrupted during {content_type} processing")
+            # Save session for interrupted operation
+            all_stats[content_type] = {"processed": 0, "new": 0, "updated": 0, "errors": 1}
+            if len(content_types) > 1:
+                archiver.save_comprehensive_session_stats(args.domain, content_types, all_stats, interrupted=True)
+            else:
+                archiver.save_session_stats(content_type, {"processed": 0, "new": 0, "updated": 0, "errors": 1})
             print("💾 Progress has been saved. You can resume later.")
             sys.exit(0)
         except Exception as e:

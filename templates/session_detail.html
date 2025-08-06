@@ -23,26 +23,30 @@
                 <div class="row">
                     <div class="col-md-6">
                         <strong>Session Date:</strong><br>
-                        <i class="fas fa-clock"></i> {{ session.session_date }}
+                        <i class="fas fa-clock"></i> {{ session['session_date'] }}
                     </div>
                     <div class="col-md-6">
                         <strong>Content Type:</strong><br>
-                        {% if session.content_type == 'posts' %}
-                            <span class="badge bg-primary">{{ session.content_type }}</span>
-                        {% elif session.content_type == 'comments' %}
-                            <span class="badge bg-info">{{ session.content_type }}</span>
-                        {% elif session.content_type == 'pages' %}
-                            <span class="badge bg-success">{{ session.content_type }}</span>
-                        {% elif session.content_type == 'users' %}
-                            <span class="badge bg-secondary">{{ session.content_type }}</span>
-                        {% elif session.content_type == 'categories' %}
-                            <span class="badge bg-info">{{ session.content_type }}</span>
-                        {% elif session.content_type == 'tags' %}
-                            <span class="badge bg-warning">{{ session.content_type }}</span>
-                        {% elif 'Archive of' in session.content_type %}
+                        {% if session['content_type'] == 'posts' %}
+                            <span class="badge bg-primary">{{ session['content_type'] }}</span>
+                        {% elif session['content_type'] == 'comments' %}
+                            <span class="badge bg-info">{{ session['content_type'] }}</span>
+                        {% elif session['content_type'] == 'pages' %}
+                            <span class="badge bg-success">{{ session['content_type'] }}</span>
+                        {% elif session['content_type'] == 'users' %}
+                            <span class="badge bg-secondary">{{ session['content_type'] }}</span>
+                        {% elif session['content_type'] == 'categories' %}
+                            <span class="badge bg-info">{{ session['content_type'] }}</span>
+                        {% elif session['content_type'] == 'tags' %}
+                            <span class="badge bg-warning">{{ session['content_type'] }}</span>
+                        {% elif 'Archive of' in session['content_type'] %}
                             <span class="badge bg-dark">Complete Archive</span>
+                        {% elif 'INTERRUPTED' in session['content_type'] %}
+                            <span class="badge bg-danger">Interrupted</span>
+                        {% elif 'FAILED VERIFICATION' in session['content_type'] %}
+                            <span class="badge bg-danger">Failed Verification</span>
                         {% else %}
-                            <span class="badge bg-primary">{{ session.content_type }}</span>
+                            <span class="badge bg-primary">{{ session['content_type'] }}</span>
                         {% endif %}
                     </div>
                 </div>
@@ -51,7 +55,7 @@
                     <div class="col-md-3">
                         <div class="card bg-info text-white">
                             <div class="card-body text-center">
-                                <h4>{{ session.items_processed }}</h4>
+                                <h4>{{ session['items_processed'] }}</h4>
                                 <p class="mb-0">Items Processed</p>
                             </div>
                         </div>
@@ -59,7 +63,7 @@
                     <div class="col-md-3">
                         <div class="card bg-success text-white">
                             <div class="card-body text-center">
-                                <h4>{{ session.items_new }}</h4>
+                                <h4>{{ session['items_new'] }}</h4>
                                 <p class="mb-0">New Items</p>
                             </div>
                         </div>
@@ -67,28 +71,54 @@
                     <div class="col-md-3">
                         <div class="card bg-warning text-white">
                             <div class="card-body text-center">
-                                <h4>{{ session.items_updated }}</h4>
+                                <h4>{{ session['items_updated'] }}</h4>
                                 <p class="mb-0">Updated Items</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-3">
-                        <div class="card {% if session.errors and session.errors != '[]' %}bg-danger{% else %}bg-success{% endif %} text-white">
+                        <div class="card {% if session['errors'] and session['errors'] != '[]' %}bg-danger{% else %}bg-success{% endif %} text-white">
                             <div class="card-body text-center">
-                                <h4>{% if session.errors and session.errors != '[]' %}Yes{% else %}No{% endif %}</h4>
+                                <h4>{% if session['errors'] and session['errors'] != '[]' %}Yes{% else %}No{% endif %}</h4>
                                 <p class="mb-0">Errors</p>
                             </div>
                         </div>
                     </div>
                 </div>
                 
-                {% if 'Archive of' in session.content_type %}
+                {% if 'Archive of' in session['content_type'] %}
                 <div class="row mt-4">
                     <div class="col-12">
                         <h5><i class="fas fa-list"></i> Archive Details</h5>
                         <div class="alert alert-info">
-                            <strong>Domain:</strong> {{ session.content_type.split(' - ')[0].replace('Archive of ', '') }}<br>
-                            <strong>Content Types:</strong> {{ session.content_type.split(' - ')[1] if ' - ' in session.content_type else 'All types' }}
+                            <strong>Domain:</strong> {{ session['content_type'].split(' - ')[0].replace('Archive of ', '') }}<br>
+                            <strong>Content Types:</strong> {{ session['content_type'].split(' - ')[1] if ' - ' in session['content_type'] else 'All types' }}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if 'INTERRUPTED' in session['content_type'] %}
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <h5><i class="fas fa-exclamation-triangle"></i> Interrupted Session</h5>
+                        <div class="alert alert-warning">
+                            <strong>Status:</strong> This archive session was interrupted by the user (Ctrl+C)<br>
+                            <strong>Domain:</strong> {{ session['content_type'].split(' - ')[1] if ' - ' in session['content_type'] else 'Unknown' }}<br>
+                            <strong>Content Types:</strong> {{ session['content_type'].split(' - ')[2] if ' - ' in session['content_type'] else 'Unknown' }}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if 'FAILED VERIFICATION' in session['content_type'] %}
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <h5><i class="fas fa-times-circle"></i> Failed Verification</h5>
+                        <div class="alert alert-danger">
+                            <strong>Status:</strong> WordPress site verification failed<br>
+                            <strong>Domain:</strong> {{ session['content_type'].split(' - ')[1] if ' - ' in session['content_type'] else 'Unknown' }}<br>
+                            <strong>Reason:</strong> {{ session['content_type'].split(' - ')[2] if ' - ' in session['content_type'] else 'Unknown' }}
                         </div>
                     </div>
                 </div>

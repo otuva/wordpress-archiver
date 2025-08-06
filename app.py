@@ -65,7 +65,7 @@ def get_archive_stats() -> Dict[str, Any]:
     
     # Get latest session
     cursor.execute("""
-        SELECT session_date, content_type, items_processed, items_new, items_updated, errors
+        SELECT id, session_date, content_type, items_processed, items_new, items_updated, errors
         FROM archive_sessions 
         ORDER BY session_date DESC 
         LIMIT 1
@@ -518,7 +518,7 @@ def sessions():
     cursor = conn.cursor()
     
     cursor.execute("""
-        SELECT session_date, content_type, items_processed, items_new, 
+        SELECT id, session_date, content_type, items_processed, items_new, 
                items_updated, errors
         FROM archive_sessions 
         ORDER BY session_date DESC
@@ -539,7 +539,7 @@ def session_detail(session_id):
     
     # Get session details
     cursor.execute("""
-        SELECT session_date, content_type, items_processed, items_new, 
+        SELECT id, session_date, content_type, items_processed, items_new, 
                items_updated, errors
         FROM archive_sessions 
         WHERE id = ?
@@ -552,11 +552,11 @@ def session_detail(session_id):
     
     # Parse errors if they exist
     errors_data = []
-    if session.errors and session.errors != '[]':
+    if session['errors'] and session['errors'] != '[]':
         try:
-            errors_data = json.loads(session.errors)
+            errors_data = json.loads(session['errors'])
         except:
-            errors_data = [session.errors]
+            errors_data = [session['errors']]
     
     conn.close()
     

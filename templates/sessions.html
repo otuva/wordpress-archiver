@@ -35,41 +35,45 @@
                         </thead>
                         <tbody>
                             {% for session in sessions %}
-                            <tr class="session-row" style="cursor: pointer;" data-session-url="{{ url_for('session_detail', session_id=session.id) }}">
+                            <tr class="session-row" style="cursor: pointer;" data-session-url="{{ url_for('session_detail', session_id=session['id']) }}">
                                 <td>
                                     <i class="fas fa-clock"></i>
-                                    {{ session.session_date }}
+                                    {{ session['session_date'] }}
                                 </td>
                                 <td>
-                                    {% if session.content_type == 'posts' %}
-                                        <span class="badge bg-primary">{{ session.content_type }}</span>
-                                    {% elif session.content_type == 'comments' %}
-                                        <span class="badge bg-info">{{ session.content_type }}</span>
-                                    {% elif session.content_type == 'pages' %}
-                                        <span class="badge bg-success">{{ session.content_type }}</span>
-                                    {% elif session.content_type == 'users' %}
-                                        <span class="badge bg-secondary">{{ session.content_type }}</span>
-                                    {% elif session.content_type == 'categories' %}
-                                        <span class="badge bg-info">{{ session.content_type }}</span>
-                                    {% elif session.content_type == 'tags' %}
-                                        <span class="badge bg-warning">{{ session.content_type }}</span>
-                                    {% elif 'Archive of' in session.content_type %}
-                                        <span class="badge bg-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ session.content_type }}">Complete Archive</span>
+                                    {% if session['content_type'] == 'posts' %}
+                                        <span class="badge bg-primary">{{ session['content_type'] }}</span>
+                                    {% elif session['content_type'] == 'comments' %}
+                                        <span class="badge bg-info">{{ session['content_type'] }}</span>
+                                    {% elif session['content_type'] == 'pages' %}
+                                        <span class="badge bg-success">{{ session['content_type'] }}</span>
+                                    {% elif session['content_type'] == 'users' %}
+                                        <span class="badge bg-secondary">{{ session['content_type'] }}</span>
+                                    {% elif session['content_type'] == 'categories' %}
+                                        <span class="badge bg-info">{{ session['content_type'] }}</span>
+                                    {% elif session['content_type'] == 'tags' %}
+                                        <span class="badge bg-warning">{{ session['content_type'] }}</span>
+                                    {% elif 'Archive of' in session['content_type'] %}
+                                        <span class="badge bg-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ session['content_type'] }}">Complete Archive</span>
+                                    {% elif 'INTERRUPTED' in session['content_type'] %}
+                                        <span class="badge bg-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ session['content_type'] }}">Interrupted</span>
+                                    {% elif 'FAILED VERIFICATION' in session['content_type'] %}
+                                        <span class="badge bg-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ session['content_type'] }}">Failed Verification</span>
                                     {% else %}
-                                        <span class="badge bg-primary">{{ session.content_type }}</span>
+                                        <span class="badge bg-primary">{{ session['content_type'] }}</span>
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <span class="badge bg-info">{{ session.items_processed }}</span>
+                                    <span class="badge bg-info">{{ session['items_processed'] }}</span>
                                 </td>
                                 <td>
-                                    <span class="badge bg-success">{{ session.items_new }}</span>
+                                    <span class="badge bg-success">{{ session['items_new'] }}</span>
                                 </td>
                                 <td>
-                                    <span class="badge bg-warning">{{ session.items_updated }}</span>
+                                    <span class="badge bg-warning">{{ session['items_updated'] }}</span>
                                 </td>
                                 <td>
-                                    {% if session.errors and session.errors != '[]' %}
+                                    {% if session['errors'] and session['errors'] != '[]' %}
                                         <span class="badge bg-danger">Yes</span>
                                     {% else %}
                                         <span class="badge bg-success">No</span>
