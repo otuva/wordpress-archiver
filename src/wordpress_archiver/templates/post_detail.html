@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ post_versions[0].title or 'Untitled' }} - WordPress Archive Viewer{% endblock %}
+{% block title %}{{ (post_versions[0].title or 'Untitled') | render_html }} - WordPress Archive Viewer{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -12,7 +12,7 @@
                         <i class="fas fa-newspaper"></i> Posts
                     </a>
                 </li>
-                <li class="breadcrumb-item active">{{ post_versions[0].title or 'Untitled' }}</li>
+                <li class="breadcrumb-item active">{{ (post_versions[0].title or 'Untitled') | render_html }}</li>
             </ol>
         </nav>
     </div>
@@ -22,7 +22,7 @@
     <div class="col-12">
         <h1 class="mb-4">
             <i class="fas fa-newspaper"></i> 
-            {{ post_versions[0].title or 'Untitled' }}
+            {{ (post_versions[0].title or 'Untitled') | render_html }}
             <span class="badge bg-primary">ID: {{ post_versions[0].wp_id }}</span>
         </h1>
     </div>
