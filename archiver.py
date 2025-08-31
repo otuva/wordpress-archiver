@@ -168,7 +168,26 @@ class WordPressArchiver:
         """Calculate SHA-256 hash of content for change detection."""
         return hashlib.sha256(content.encode('utf-8')).hexdigest()
     
-    def archive_posts(self, api: WordPressAPI, limit: Optional[int] = None) -> Dict[str, int]:
+    def is_date_after_filter(self, item_date: str, after_date: Optional[datetime]) -> bool:
+        """
+        Check if an item's date is after the filter date.
+        
+        :param item_date: ISO format date string from WordPress
+        :param after_date: Filter date to compare against
+        :return: True if item should be included, False otherwise
+        """
+        if not after_date:
+            return True
+        
+        try:
+            # Parse the WordPress date (ISO format)
+            item_datetime = datetime.fromisoformat(item_date.replace('Z', '+00:00'))
+            return item_datetime >= after_date
+        except (ValueError, AttributeError):
+            # If date parsing fails, include the item to be safe
+            return True
+    
+    def archive_posts(self, api: WordPressAPI, limit: Optional[int] = None, after_date: Optional[datetime] = None) -> Dict[str, int]:
         """Archive posts from WordPress API."""
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
@@ -182,6 +201,11 @@ class WordPressArchiver:
                 
                 for post in response.data:
                     try:
+                        # Check if post date is after the filter date
+                        post_date = post.get('date', '')
+                        if not self.is_date_after_filter(post_date, after_date):
+                            continue
+                        
                         stats["processed"] += 1
                         
                         # Calculate content hash
@@ -191,9 +215,9 @@ class WordPressArchiver:
                         with sqlite3.connect(self.db_path) as conn:
                             cursor = conn.cursor()
                             
-                            # Check if post exists
+                            # Check if post exists and get the latest version
                             cursor.execute(
-                                "SELECT id, content_hash, version FROM posts WHERE wp_id = ?",
+                                "SELECT id, content_hash, version FROM posts WHERE wp_id = ? ORDER BY version DESC LIMIT 1",
                                 (post['id'],)
                             )
                             existing = cursor.fetchone()
@@ -263,7 +287,7 @@ class WordPressArchiver:
         
         return stats
     
-    def archive_comments(self, api: WordPressAPI, limit: Optional[int] = None) -> Dict[str, int]:
+    def archive_comments(self, api: WordPressAPI, limit: Optional[int] = None, after_date: Optional[datetime] = None) -> Dict[str, int]:
         """Archive comments from WordPress API."""
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
@@ -277,6 +301,11 @@ class WordPressArchiver:
                 
                 for comment in response.data:
                     try:
+                        # Check if comment date is after the filter date
+                        comment_date = comment.get('date', '')
+                        if not self.is_date_after_filter(comment_date, after_date):
+                            continue
+                        
                         stats["processed"] += 1
                         
                         # Calculate content hash
@@ -286,9 +315,9 @@ class WordPressArchiver:
                         with sqlite3.connect(self.db_path) as conn:
                             cursor = conn.cursor()
                             
-                            # Check if comment exists
+                            # Check if comment exists and get the latest version
                             cursor.execute(
-                                "SELECT id, content_hash, version FROM comments WHERE wp_id = ?",
+                                "SELECT id, content_hash, version FROM comments WHERE wp_id = ? ORDER BY version DESC LIMIT 1",
                                 (comment['id'],)
                             )
                             existing = cursor.fetchone()
@@ -360,7 +389,7 @@ class WordPressArchiver:
         
         return stats
     
-    def archive_pages(self, api: WordPressAPI, limit: Optional[int] = None) -> Dict[str, int]:
+    def archive_pages(self, api: WordPressAPI, limit: Optional[int] = None, after_date: Optional[datetime] = None) -> Dict[str, int]:
         """Archive pages from WordPress API."""
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
@@ -374,6 +403,11 @@ class WordPressArchiver:
                 
                 for page_data in response.data:
                     try:
+                        # Check if page date is after the filter date
+                        page_date = page_data.get('date', '')
+                        if not self.is_date_after_filter(page_date, after_date):
+                            continue
+                        
                         stats["processed"] += 1
                         
                         # Calculate content hash
@@ -383,9 +417,9 @@ class WordPressArchiver:
                         with sqlite3.connect(self.db_path) as conn:
                             cursor = conn.cursor()
                             
-                            # Check if page exists
+                            # Check if page exists and get the latest version
                             cursor.execute(
-                                "SELECT id, content_hash, version FROM pages WHERE wp_id = ?",
+                                "SELECT id, content_hash, version FROM pages WHERE wp_id = ? ORDER BY version DESC LIMIT 1",
                                 (page_data['id'],)
                             )
                             existing = cursor.fetchone()
@@ -455,7 +489,7 @@ class WordPressArchiver:
         
         return stats
     
-    def archive_users(self, api: WordPressAPI, limit: Optional[int] = None) -> Dict[str, int]:
+    def archive_users(self, api: WordPressAPI, limit: Optional[int] = None, after_date: Optional[datetime] = None) -> Dict[str, int]:
         """Archive users from WordPress API."""
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
@@ -469,6 +503,8 @@ class WordPressArchiver:
                 
                 for user in response.data:
                     try:
+                        # For users, we don't have a reliable date field, so we'll include all users
+                        # when after_date is specified (users are typically created once)
                         stats["processed"] += 1
                         
                         # Calculate content hash from user data
@@ -478,9 +514,9 @@ class WordPressArchiver:
                         with sqlite3.connect(self.db_path) as conn:
                             cursor = conn.cursor()
                             
-                            # Check if user exists
+                            # Check if user exists and get the latest version
                             cursor.execute(
-                                "SELECT id, content_hash, version FROM users WHERE wp_id = ?",
+                                "SELECT id, content_hash, version FROM users WHERE wp_id = ? ORDER BY version DESC LIMIT 1",
                                 (user['id'],)
                             )
                             existing = cursor.fetchone()
@@ -548,7 +584,7 @@ class WordPressArchiver:
         
         return stats
     
-    def archive_categories(self, api: WordPressAPI, limit: Optional[int] = None) -> Dict[str, int]:
+    def archive_categories(self, api: WordPressAPI, limit: Optional[int] = None, after_date: Optional[datetime] = None) -> Dict[str, int]:
         """Archive categories from WordPress API."""
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
@@ -562,6 +598,8 @@ class WordPressArchiver:
                 
                 for category in response.data:
                     try:
+                        # For categories, we don't have a reliable date field, so we'll include all categories
+                        # when after_date is specified (categories are typically created once)
                         stats["processed"] += 1
                         
                         # Calculate content hash from category data
@@ -571,9 +609,9 @@ class WordPressArchiver:
                         with sqlite3.connect(self.db_path) as conn:
                             cursor = conn.cursor()
                             
-                            # Check if category exists
+                            # Check if category exists and get the latest version
                             cursor.execute(
-                                "SELECT id, content_hash, version FROM categories WHERE wp_id = ?",
+                                "SELECT id, content_hash, version FROM categories WHERE wp_id = ? ORDER BY version DESC LIMIT 1",
                                 (category['id'],)
                             )
                             existing = cursor.fetchone()
@@ -641,7 +679,7 @@ class WordPressArchiver:
         
         return stats
     
-    def archive_tags(self, api: WordPressAPI, limit: Optional[int] = None) -> Dict[str, int]:
+    def archive_tags(self, api: WordPressAPI, limit: Optional[int] = None, after_date: Optional[datetime] = None) -> Dict[str, int]:
         """Archive tags from WordPress API."""
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
@@ -655,6 +693,8 @@ class WordPressArchiver:
                 
                 for tag in response.data:
                     try:
+                        # For tags, we don't have a reliable date field, so we'll include all tags
+                        # when after_date is specified (tags are typically created once)
                         stats["processed"] += 1
                         
                         # Calculate content hash from tag data
@@ -664,9 +704,9 @@ class WordPressArchiver:
                         with sqlite3.connect(self.db_path) as conn:
                             cursor = conn.cursor()
                             
-                            # Check if tag exists
+                            # Check if tag exists and get the latest version
                             cursor.execute(
-                                "SELECT id, content_hash, version FROM tags WHERE wp_id = ?",
+                                "SELECT id, content_hash, version FROM tags WHERE wp_id = ? ORDER BY version DESC LIMIT 1",
                                 (tag['id'],)
                             )
                             existing = cursor.fetchone()
@@ -874,6 +914,10 @@ def main():
         help="Limit number of items to process (for testing)"
     )
     parser.add_argument(
+        "--after-date",
+        help="Only archive content created/modified after this date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"
+    )
+    parser.add_argument(
         "--db",
         default="wordpress_archive.db",
         help="SQLite database file path (default: wordpress_archive.db)"
@@ -885,6 +929,21 @@ def main():
     )
     
     args = parser.parse_args()
+    
+    # Parse after_date if provided
+    after_date = None
+    if args.after_date:
+        try:
+            # Try parsing as date first
+            if len(args.after_date) == 10:  # YYYY-MM-DD
+                after_date = datetime.strptime(args.after_date, '%Y-%m-%d')
+            else:  # YYYY-MM-DD HH:MM:SS
+                after_date = datetime.strptime(args.after_date, '%Y-%m-%d %H:%M:%S')
+            print(f"📅 Filtering content after: {after_date}")
+        except ValueError:
+            print(f"❌ Invalid date format: {args.after_date}")
+            print("   Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS format")
+            sys.exit(1)
     
     # Initialize archiver
     archiver = WordPressArchiver(args.db)
@@ -945,6 +1004,8 @@ def main():
     print(f"📋 Content types to archive: {', '.join(content_types)}")
     if args.limit:
         print(f"🔢 Processing limit: {args.limit} items per type")
+    if after_date:
+        print(f"📅 Only archiving content after: {after_date}")
     print("=" * 60)
     
     all_stats = {}
@@ -953,17 +1014,17 @@ def main():
         
         try:
             if content_type == "posts":
-                stats = archiver.archive_posts(api, args.limit)
+                stats = archiver.archive_posts(api, args.limit, after_date)
             elif content_type == "comments":
-                stats = archiver.archive_comments(api, args.limit)
+                stats = archiver.archive_comments(api, args.limit, after_date)
             elif content_type == "pages":
-                stats = archiver.archive_pages(api, args.limit)
+                stats = archiver.archive_pages(api, args.limit, after_date)
             elif content_type == "users":
-                stats = archiver.archive_users(api, args.limit)
+                stats = archiver.archive_users(api, args.limit, after_date)
             elif content_type == "categories":
-                stats = archiver.archive_categories(api, args.limit)
+                stats = archiver.archive_categories(api, args.limit, after_date)
             elif content_type == "tags":
-                stats = archiver.archive_tags(api, args.limit)
+                stats = archiver.archive_tags(api, args.limit, after_date)
             
             # Store stats for comprehensive session
             all_stats[content_type] = stats
