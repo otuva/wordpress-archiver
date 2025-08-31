@@ -59,7 +59,7 @@
                             <div class="mb-2">
                                 <strong><i class="fas fa-link"></i> On Post:</strong><br>
                                 <a href="{{ url_for('post_detail', wp_id=comment.post_id) }}" class="text-decoration-none">
-                                    {{ comment.post_title }}
+                                    {{ comment.post_title | render_html }}
                                 </a>
                             </div>
                             {% endif %}
