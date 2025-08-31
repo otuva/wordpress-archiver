@@ -28,7 +28,13 @@ def render_html(text: str) -> str:
     return Markup(decoded)
 
 
+def calculate_indentation(level: int) -> int:
+    """Calculate indentation for comment levels, capped at 200px."""
+    return min(level * 20, 200)
+
+
 app.jinja_env.filters['render_html'] = render_html
+app.jinja_env.filters['calculate_indentation'] = calculate_indentation
 
 
 def get_db_manager() -> DatabaseManager:
@@ -120,7 +126,49 @@ def post_detail(wp_id):
             WHERE post_id = ?
             ORDER BY date_created ASC
         """, (wp_id,))
-        comments = cursor.fetchall()
+        all_comments = cursor.fetchall()
+        
+        # Convert to list of dicts for easier manipulation
+        comment_dicts = []
+        for comment in all_comments:
+            # Convert parent_id 0 to None for easier handling
+            parent_id = comment[8] if comment[8] != 0 else None
+            comment_dicts.append({
+                'wp_id': comment[0],
+                'author_name': comment[1],
+                'author_email': comment[2],
+                'author_url': comment[3],
+                'content': comment[4],
+                'date_created': comment[5],
+                'status': comment[6],
+                'version': comment[7],
+                'parent_id': parent_id,
+                'replies': []
+            })
+        
+        # Build comment hierarchy
+        def build_comment_tree(comments, parent_id=None):
+            tree = []
+            for comment in comments:
+                if comment['parent_id'] == parent_id:
+                    comment['replies'] = build_comment_tree(comments, comment['wp_id'])
+                    tree.append(comment)
+            return tree
+        
+        # Build the comment tree
+        comment_tree = build_comment_tree(comment_dicts)
+        
+        # Flatten the tree for display (depth-first traversal)
+        def flatten_tree(tree, level=0):
+            flattened = []
+            for comment in tree:
+                comment['level'] = level
+                flattened.append(comment)
+                if comment['replies']:
+                    flattened.extend(flatten_tree(comment['replies'], level + 1))
+            return flattened
+        
+        comments = flatten_tree(comment_tree)
     
     return render_template('post_detail.html', 
                          post_versions=post_versions,
@@ -152,18 +200,98 @@ def comments():
         cursor.execute(f"SELECT COUNT(*) FROM comments c {where_clause}", params)
         total_comments = cursor.fetchone()[0]
         
-        # Get comments for current page
-        query = f"""
-            SELECT c.wp_id, c.author_name, c.author_email, c.author_url, c.content, c.date_created, c.status, 
-                   c.version, c.parent_id, p.title as post_title, p.wp_id as post_id
-            FROM comments c
-            LEFT JOIN posts p ON c.post_id = p.wp_id
-            {where_clause}
-            ORDER BY c.date_created DESC
-            LIMIT ? OFFSET ?
-        """
-        cursor.execute(query, params + [per_page, offset])
-        comments = cursor.fetchall()
+        # Use recursive CTE to calculate comment levels and get paginated results
+        if search:
+            # For search, we need to include all matching comments and their ancestors
+            query = f"""
+                WITH RECURSIVE comment_tree AS (
+                    -- Base case: top-level comments (parent_id = 0 or NULL)
+                    SELECT 
+                        c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
+                        c.date_created, c.status, c.version, c.parent_id, 
+                        p.title as post_title, p.wp_id as post_id,
+                        0 as level,
+                        c.date_created as sort_order
+                    FROM comments c
+                    LEFT JOIN posts p ON c.post_id = p.wp_id
+                    WHERE (c.parent_id = 0 OR c.parent_id IS NULL)
+                    AND (c.author_name LIKE ? OR c.content LIKE ?)
+                    
+                    UNION ALL
+                    
+                    -- Recursive case: child comments
+                    SELECT 
+                        c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
+                        c.date_created, c.status, c.version, c.parent_id, 
+                        p.title as post_title, p.wp_id as post_id,
+                        ct.level + 1,
+                        c.date_created as sort_order
+                    FROM comments c
+                    LEFT JOIN posts p ON c.post_id = p.wp_id
+                    JOIN comment_tree ct ON c.parent_id = ct.wp_id
+                    WHERE (c.author_name LIKE ? OR c.content LIKE ?)
+                )
+                SELECT * FROM comment_tree
+                ORDER BY sort_order ASC, level ASC
+                LIMIT ? OFFSET ?
+            """
+            query_params = [f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%', per_page, offset]
+        else:
+            # No search - use simple recursive CTE
+            query = """
+                WITH RECURSIVE comment_tree AS (
+                    -- Base case: top-level comments (parent_id = 0 or NULL)
+                    SELECT 
+                        c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
+                        c.date_created, c.status, c.version, c.parent_id, 
+                        p.title as post_title, p.wp_id as post_id,
+                        0 as level,
+                        c.date_created as sort_order
+                    FROM comments c
+                    LEFT JOIN posts p ON c.post_id = p.wp_id
+                    WHERE (c.parent_id = 0 OR c.parent_id IS NULL)
+                    
+                    UNION ALL
+                    
+                    -- Recursive case: child comments
+                    SELECT 
+                        c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
+                        c.date_created, c.status, c.version, c.parent_id, 
+                        p.title as post_title, p.wp_id as post_id,
+                        ct.level + 1,
+                        c.date_created as sort_order
+                    FROM comments c
+                    LEFT JOIN posts p ON c.post_id = p.wp_id
+                    JOIN comment_tree ct ON c.parent_id = ct.wp_id
+                )
+                SELECT * FROM comment_tree
+                ORDER BY sort_order ASC, level ASC
+                LIMIT ? OFFSET ?
+            """
+            query_params = [per_page, offset]
+        
+        # Execute query with pagination parameters
+        cursor.execute(query, query_params)
+        paginated_comments = cursor.fetchall()
+        
+        # Convert to list of dicts
+        comments = []
+        for comment in paginated_comments:
+            parent_id = comment[8] if comment[8] != 0 else None
+            comments.append({
+                'wp_id': comment[0],
+                'author_name': comment[1],
+                'author_email': comment[2],
+                'author_url': comment[3],
+                'content': comment[4],
+                'date_created': comment[5],
+                'status': comment[6],
+                'version': comment[7],
+                'parent_id': parent_id,
+                'post_title': comment[9],
+                'post_id': comment[10],
+                'level': comment[11]
+            })
     
     total_pages = (total_comments + per_page - 1) // per_page
     

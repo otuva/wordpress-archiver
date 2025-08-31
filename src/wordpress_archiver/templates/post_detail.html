@@ -139,7 +139,7 @@
             </div>
             <div class="card-body">
                 {% for comment in comments %}
-                <div class="comment-item" {% if comment.parent_id %}style="margin-left: 30px; border-left-color: #28a745;"{% endif %}>
+                <div class="comment-item" style="margin-left: {{ comment.level | calculate_indentation }}px; {% if comment.level > 0 %}border-left: 3px solid #28a745; padding-left: 10px;{% endif %}">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <div>
                             <div class="comment-author">
@@ -153,9 +153,7 @@
                                         <i class="fas fa-external-link-alt"></i>
                                     </a>
                                 {% endif %}
-                                {% if comment.parent_id %}
-                                    <span class="badge bg-success">Reply</span>
-                                {% endif %}
+
                             </div>
                             <span class="badge bg-primary version-badge">v{{ comment.version }}</span>
                         </div>

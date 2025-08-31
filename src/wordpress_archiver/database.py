@@ -186,6 +186,7 @@ class DatabaseManager:
             ("idx_posts_date_created", "posts", "date_created"),
             ("idx_comments_wp_id", "comments", "wp_id"),
             ("idx_comments_post_id", "comments", "post_id"),
+            ("idx_comments_parent_id", "comments", "parent_id"),
             ("idx_comments_date_created", "comments", "date_created"),
             ("idx_pages_wp_id", "pages", "wp_id"),
             ("idx_pages_date_created", "pages", "date_created"),
