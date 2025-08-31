@@ -279,9 +279,12 @@ class WordPressArchiver:
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
         
+        # Calculate optimal per_page value based on limit
+        per_page = min(100, limit) if limit else 100
+        
         try:
             while True:
-                response = api.get_posts(page=page, per_page=100)
+                response = api.get_posts(page=page, per_page=per_page)
                 
                 if not response.data:
                     break
@@ -359,7 +362,12 @@ class WordPressArchiver:
                     except Exception as e:
                         stats["errors"] += 1
                         print(f"Error processing post {post.get('id', 'Unknown')}: {e}")
+                    
+                    # Check limit after processing each post
+                    if limit and stats["processed"] >= limit:
+                        break
                 
+                # Check limit again after processing the page
                 if limit and stats["processed"] >= limit:
                     break
                 
@@ -379,9 +387,12 @@ class WordPressArchiver:
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
         
+        # Calculate optimal per_page value based on limit
+        per_page = min(100, limit) if limit else 100
+        
         try:
             while True:
-                response = api.get_comments(page=page, per_page=100)
+                response = api.get_comments(page=page, per_page=per_page)
                 
                 if not response.data:
                     break
@@ -461,7 +472,12 @@ class WordPressArchiver:
                     except Exception as e:
                         stats["errors"] += 1
                         print(f"Error processing comment {comment.get('id', 'Unknown')}: {e}")
+                    
+                    # Check limit after processing each comment
+                    if limit and stats["processed"] >= limit:
+                        break
                 
+                # Check limit again after processing the page
                 if limit and stats["processed"] >= limit:
                     break
                 
@@ -481,9 +497,12 @@ class WordPressArchiver:
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
         
+        # Calculate optimal per_page value based on limit
+        per_page = min(100, limit) if limit else 100
+        
         try:
             while True:
-                response = api.get_pages(page=page, per_page=100)
+                response = api.get_pages(page=page, per_page=per_page)
                 
                 if not response.data:
                     break
@@ -561,7 +580,12 @@ class WordPressArchiver:
                     except Exception as e:
                         stats["errors"] += 1
                         print(f"Error processing page {page_data.get('id', 'Unknown')}: {e}")
+                    
+                    # Check limit after processing each page
+                    if limit and stats["processed"] >= limit:
+                        break
                 
+                # Check limit again after processing the page
                 if limit and stats["processed"] >= limit:
                     break
                 
@@ -581,9 +605,12 @@ class WordPressArchiver:
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
         
+        # Calculate optimal per_page value based on limit
+        per_page = min(100, limit) if limit else 100
+        
         try:
             while True:
-                response = api.get_users(page=page, per_page=100)
+                response = api.get_users(page=page, per_page=per_page)
                 
                 if not response.data:
                     break
@@ -656,7 +683,12 @@ class WordPressArchiver:
                     except Exception as e:
                         stats["errors"] += 1
                         print(f"Error processing user {user.get('id', 'Unknown')}: {e}")
+                    
+                    # Check limit after processing each user
+                    if limit and stats["processed"] >= limit:
+                        break
                 
+                # Check limit again after processing the page
                 if limit and stats["processed"] >= limit:
                     break
                 
@@ -676,9 +708,12 @@ class WordPressArchiver:
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
         
+        # Calculate optimal per_page value based on limit
+        per_page = min(100, limit) if limit else 100
+        
         try:
             while True:
-                response = api.get_categories(page=page, per_page=100)
+                response = api.get_categories(page=page, per_page=per_page)
                 
                 if not response.data:
                     break
@@ -751,7 +786,12 @@ class WordPressArchiver:
                     except Exception as e:
                         stats["errors"] += 1
                         print(f"Error processing category {category.get('id', 'Unknown')}: {e}")
+                    
+                    # Check limit after processing each category
+                    if limit and stats["processed"] >= limit:
+                        break
                 
+                # Check limit again after processing the page
                 if limit and stats["processed"] >= limit:
                     break
                 
@@ -771,9 +811,12 @@ class WordPressArchiver:
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
         
+        # Calculate optimal per_page value based on limit
+        per_page = min(100, limit) if limit else 100
+        
         try:
             while True:
-                response = api.get_tags(page=page, per_page=100)
+                response = api.get_tags(page=page, per_page=per_page)
                 
                 if not response.data:
                     break
@@ -844,7 +887,12 @@ class WordPressArchiver:
                     except Exception as e:
                         stats["errors"] += 1
                         print(f"Error processing tag {tag.get('id', 'Unknown')}: {e}")
+                    
+                    # Check limit after processing each tag
+                    if limit and stats["processed"] >= limit:
+                        break
                 
+                # Check limit again after processing the page
                 if limit and stats["processed"] >= limit:
                     break
                 
