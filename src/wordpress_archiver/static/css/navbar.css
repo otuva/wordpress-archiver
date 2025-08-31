@@ -1,0 +1,86 @@
+/* Navbar Styles */
+
+.navbar {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    box-shadow: var(--shadow-md);
+    padding: 1rem 0;
+}
+
+.navbar-brand {
+    font-weight: 700;
+    font-size: 1.5rem;
+    color: white !important;
+    text-decoration: none;
+}
+
+.navbar-brand:hover {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.nav-link {
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9) !important;
+    padding: 0.5rem 1rem !important;
+    border-radius: var(--border-radius-sm);
+    transition: all 0.2s ease;
+    margin: 0 0.25rem;
+    min-width: 100px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-link i {
+    width: 16px;
+    text-align: center;
+    margin-right: 0.5rem;
+}
+
+.nav-link:hover {
+    color: white !important;
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+.nav-link.active {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: white !important;
+}
+
+/* Search Box */
+.search-box {
+    max-width: 350px;
+}
+
+.search-box .form-control {
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.search-box .form-control::placeholder {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.search-box .form-control:focus {
+    background-color: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: white;
+}
+
+/* Responsive Navbar */
+@media (max-width: 768px) {
+    .navbar-nav {
+        margin-top: 1rem;
+    }
+    
+    .nav-link {
+        margin: 0.25rem 0;
+    }
+    
+    .search-box {
+        max-width: 100%;
+        margin-top: 1rem;
+    }
+} 

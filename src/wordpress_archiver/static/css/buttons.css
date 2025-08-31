@@ -1,0 +1,101 @@
+/* Button and Form Styles */
+
+/* Buttons */
+.btn {
+    border-radius: var(--border-radius-sm);
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    transition: all 0.2s ease;
+    border: none;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    border: none;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, var(--primary-dark) 0%, #4338ca 100%);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.btn-outline-primary {
+    border: 2px solid var(--primary-color);
+    color: var(--primary-color);
+}
+
+.btn-outline-primary:hover {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+}
+
+.btn-outline-secondary {
+    border: 2px solid var(--secondary-color);
+    color: var(--secondary-color);
+}
+
+.btn-outline-secondary:hover {
+    background: var(--secondary-color);
+    border-color: var(--secondary-color);
+    transform: translateY(-1px);
+}
+
+.btn-outline-light {
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    color: white;
+}
+
+.btn-outline-light:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.7);
+    transform: translateY(-1px);
+}
+
+.btn-light {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--text-primary);
+    border: none;
+}
+
+.btn-light:hover {
+    background: white;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Form Controls */
+.form-control {
+    border-radius: var(--border-radius-sm);
+    border: 2px solid var(--border-color);
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+    transition: all 0.2s ease;
+}
+
+.form-control:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+/* Input Groups */
+.input-group .form-control {
+    border-right: none;
+}
+
+.input-group .btn {
+    border-left: none;
+    border-radius: 0 var(--border-radius-sm) var(--border-radius-sm) 0;
+}
+
+/* Button Sizes */
+.btn-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.btn-lg {
+    padding: 0.75rem 1.5rem;
+    font-size: 1.125rem;
+} 

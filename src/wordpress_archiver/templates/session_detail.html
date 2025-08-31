@@ -55,32 +55,32 @@
                     <div class="col-md-3">
                         <div class="card bg-info text-white">
                             <div class="card-body text-center">
-                                <h4>{{ session['items_processed'] }}</h4>
-                                <p class="mb-0">Items Processed</p>
+                                <h4 class="text-white">{{ session['items_processed'] }}</h4>
+                                <p class="mb-0 text-white">Items Processed</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="card bg-success text-white">
                             <div class="card-body text-center">
-                                <h4>{{ session['items_new'] }}</h4>
-                                <p class="mb-0">New Items</p>
+                                <h4 class="text-white">{{ session['items_new'] }}</h4>
+                                <p class="mb-0 text-white">New Items</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="card bg-warning text-white">
                             <div class="card-body text-center">
-                                <h4>{{ session['items_updated'] }}</h4>
-                                <p class="mb-0">Updated Items</p>
+                                <h4 class="text-white">{{ session['items_updated'] }}</h4>
+                                <p class="mb-0 text-white">Updated Items</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="card {% if session['errors'] and session['errors'] != '[]' %}bg-danger{% else %}bg-success{% endif %} text-white">
                             <div class="card-body text-center">
-                                <h4>{% if session['errors'] and session['errors'] != '[]' %}Yes{% else %}No{% endif %}</h4>
-                                <p class="mb-0">Errors</p>
+                                <h4 class="text-white">{% if session['errors'] and session['errors'] != '[]' %}Yes{% else %}No{% endif %}</h4>
+                                <p class="mb-0 text-white">Errors</p>
                             </div>
                         </div>
                     </div>

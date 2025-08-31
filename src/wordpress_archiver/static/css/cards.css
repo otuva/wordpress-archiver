@@ -1,0 +1,193 @@
+/* Card Styles */
+
+/* Base Cards */
+.card {
+    border: none;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+    background: var(--card-bg);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+}
+
+.card-header {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-bottom: 1px solid var(--border-color);
+    border-radius: var(--border-radius) var(--border-radius) 0 0 !important;
+    padding: 1.25rem 1.5rem;
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+.card-footer {
+    background-color: #f8fafc;
+    border-top: 1px solid var(--border-color);
+    border-radius: 0 0 var(--border-radius) var(--border-radius) !important;
+    padding: 1rem 1.5rem;
+}
+
+/* Stats Cards */
+.stats-card {
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    position: relative;
+}
+
+.stats-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.1) 100%);
+}
+
+.stats-card.bg-primary {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%) !important;
+}
+
+.stats-card.bg-success {
+    background: linear-gradient(135deg, var(--success-color) 0%, #059669 100%) !important;
+}
+
+.stats-card.bg-info {
+    background: linear-gradient(135deg, var(--info-color) 0%, #0891b2 100%) !important;
+}
+
+.stats-card.bg-warning {
+    background: linear-gradient(135deg, var(--warning-color) 0%, #d97706 100%) !important;
+}
+
+.stats-card.bg-secondary {
+    background: linear-gradient(135deg, var(--secondary-color) 0%, #475569 100%) !important;
+}
+
+.stats-card.bg-dark {
+    background: linear-gradient(135deg, #334155 0%, #1e293b 100%) !important;
+}
+
+/* Post Cards */
+.post-card {
+    transition: all 0.3s ease;
+}
+
+.post-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+.post-card .card-title a:hover {
+    color: var(--primary-color) !important;
+}
+
+/* Comment Cards */
+.comment-card {
+    border-left: 4px solid var(--primary-color);
+    margin-bottom: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.comment-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.comment-content {
+    line-height: 1.6;
+}
+
+.comment-item {
+    border-left: 4px solid var(--primary-color);
+    padding-left: 1.5rem;
+    margin-bottom: 1.5rem;
+    background: var(--card-bg);
+    border-radius: 0 var(--border-radius-sm) var(--border-radius-sm) 0;
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+}
+
+.comment-item:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.comment-thread {
+    border-left: 4px solid var(--success-color);
+    margin-left: 2rem;
+    padding-left: 1.5rem;
+}
+
+/* Content Preview */
+.content-preview {
+    max-height: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* Content HTML */
+.content-html {
+    max-width: 100%;
+    overflow-x: auto;
+    line-height: 1.7;
+}
+
+.content-html img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--border-radius-sm);
+}
+
+/* Responsive Cards */
+@media (max-width: 768px) {
+    .card-body {
+        padding: 1rem;
+    }
+}
+
+/* Pagination Large */
+.pagination-lg .page-link {
+    padding: 0.75rem 1rem;
+    font-size: 1.1rem;
+}
+
+/* Version Cards */
+.version-card {
+    transition: all 0.3s ease;
+}
+
+.version-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+/* Comments Container */
+.comments-container {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+/* Breadcrumb */
+.breadcrumb {
+    background: var(--light-bg);
+    padding: 1rem;
+    border-radius: var(--border-radius-sm);
+}
+
+.breadcrumb-item a {
+    color: var(--primary-color);
+}
+
+.breadcrumb-item.active {
+    color: var(--text-secondary);
+} 

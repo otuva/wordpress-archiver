@@ -29,45 +29,45 @@
 <div class="row g-4 mb-5">
     <div class="col-md-3 col-sm-6">
         <div class="card stats-card bg-primary text-white h-100">
-            <div class="card-body text-center">
+            <div class="card-body text-center d-flex flex-column justify-content-center">
                 <div class="mb-3">
                     <i class="fas fa-history fa-3x opacity-75"></i>
                 </div>
-                <h3 class="fw-bold">{{ sessions|length }}</h3>
-                <p class="mb-0 opacity-90">Total Sessions</p>
+                <h3 class="card-title mb-1 fw-bold">{{ sessions|length }}</h3>
+                <p class="card-text mb-3 opacity-90">Total Sessions</p>
             </div>
         </div>
     </div>
     <div class="col-md-3 col-sm-6">
         <div class="card stats-card bg-info text-white h-100">
-            <div class="card-body text-center">
+            <div class="card-body text-center d-flex flex-column justify-content-center">
                 <div class="mb-3">
                     <i class="fas fa-cogs fa-3x opacity-75"></i>
                 </div>
-                <h3 class="fw-bold">{{ sessions|sum(attribute='items_processed') }}</h3>
-                <p class="mb-0 opacity-90">Items Processed</p>
+                <h3 class="card-title mb-1 fw-bold">{{ sessions|sum(attribute='items_processed') }}</h3>
+                <p class="card-text mb-3 opacity-90">Items Processed</p>
             </div>
         </div>
     </div>
     <div class="col-md-3 col-sm-6">
         <div class="card stats-card bg-success text-white h-100">
-            <div class="card-body text-center">
+            <div class="card-body text-center d-flex flex-column justify-content-center">
                 <div class="mb-3">
                     <i class="fas fa-plus-circle fa-3x opacity-75"></i>
                 </div>
-                <h3 class="fw-bold">{{ sessions|sum(attribute='items_new') }}</h3>
-                <p class="mb-0 opacity-90">New Items</p>
+                <h3 class="card-title mb-1 fw-bold">{{ sessions|sum(attribute='items_new') }}</h3>
+                <p class="card-text mb-3 opacity-90">New Items</p>
             </div>
         </div>
     </div>
     <div class="col-md-3 col-sm-6">
         <div class="card stats-card bg-warning text-white h-100">
-            <div class="card-body text-center">
+            <div class="card-body text-center d-flex flex-column justify-content-center">
                 <div class="mb-3">
                     <i class="fas fa-edit fa-3x opacity-75"></i>
                 </div>
-                <h3 class="fw-bold">{{ sessions|sum(attribute='items_updated') }}</h3>
-                <p class="mb-0 opacity-90">Updated Items</p>
+                <h3 class="card-title mb-1 fw-bold">{{ sessions|sum(attribute='items_updated') }}</h3>
+                <p class="card-text mb-3 opacity-90">Updated Items</p>
             </div>
         </div>
     </div>
@@ -92,68 +92,68 @@
                     {% set tags_sessions = sessions|selectattr('content_type', 'equalto', 'tags')|list %}
                     
                     <div class="col-lg-2 col-md-4 col-sm-6">
-                        <div class="card bg-primary text-white h-100">
-                            <div class="card-body text-center">
-                                <div class="mb-2">
-                                    <i class="fas fa-newspaper fa-2x opacity-75"></i>
+                        <div class="card stats-card bg-primary text-white h-100">
+                            <div class="card-body text-center d-flex flex-column justify-content-center">
+                                <div class="mb-3">
+                                    <i class="fas fa-newspaper fa-3x opacity-75"></i>
                                 </div>
-                                <h4 class="fw-bold">{{ posts_sessions|length }}</h4>
-                                <p class="mb-0 opacity-90">Posts</p>
+                                <h3 class="card-title mb-1 fw-bold">{{ posts_sessions|length }}</h3>
+                                <p class="card-text mb-3 opacity-90">Posts</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-lg-2 col-md-4 col-sm-6">
-                        <div class="card bg-info text-white h-100">
-                            <div class="card-body text-center">
-                                <div class="mb-2">
-                                    <i class="fas fa-comments fa-2x opacity-75"></i>
+                        <div class="card stats-card bg-info text-white h-100">
+                            <div class="card-body text-center d-flex flex-column justify-content-center">
+                                <div class="mb-3">
+                                    <i class="fas fa-comments fa-3x opacity-75"></i>
                                 </div>
-                                <h4 class="fw-bold">{{ comments_sessions|length }}</h4>
-                                <p class="mb-0 opacity-90">Comments</p>
+                                <h3 class="card-title mb-1 fw-bold">{{ comments_sessions|length }}</h3>
+                                <p class="card-text mb-3 opacity-90">Comments</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-lg-2 col-md-4 col-sm-6">
-                        <div class="card bg-success text-white h-100">
-                            <div class="card-body text-center">
-                                <div class="mb-2">
-                                    <i class="fas fa-file-alt fa-2x opacity-75"></i>
+                        <div class="card stats-card bg-success text-white h-100">
+                            <div class="card-body text-center d-flex flex-column justify-content-center">
+                                <div class="mb-3">
+                                    <i class="fas fa-file-alt fa-3x opacity-75"></i>
                                 </div>
-                                <h4 class="fw-bold">{{ pages_sessions|length }}</h4>
-                                <p class="mb-0 opacity-90">Pages</p>
+                                <h3 class="card-title mb-1 fw-bold">{{ pages_sessions|length }}</h3>
+                                <p class="card-text mb-3 opacity-90">Pages</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-lg-2 col-md-4 col-sm-6">
-                        <div class="card bg-secondary text-white h-100">
-                            <div class="card-body text-center">
-                                <div class="mb-2">
-                                    <i class="fas fa-users fa-2x opacity-75"></i>
+                        <div class="card stats-card bg-secondary text-white h-100">
+                            <div class="card-body text-center d-flex flex-column justify-content-center">
+                                <div class="mb-3">
+                                    <i class="fas fa-users fa-3x opacity-75"></i>
                                 </div>
-                                <h4 class="fw-bold">{{ users_sessions|length }}</h4>
-                                <p class="mb-0 opacity-90">Users</p>
+                                <h3 class="card-title mb-1 fw-bold">{{ users_sessions|length }}</h3>
+                                <p class="card-text mb-3 opacity-90">Users</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-lg-2 col-md-4 col-sm-6">
-                        <div class="card bg-warning text-white h-100">
-                            <div class="card-body text-center">
-                                <div class="mb-2">
-                                    <i class="fas fa-folder fa-2x opacity-75"></i>
+                        <div class="card stats-card bg-warning text-white h-100">
+                            <div class="card-body text-center d-flex flex-column justify-content-center">
+                                <div class="mb-3">
+                                    <i class="fas fa-folder fa-3x opacity-75"></i>
                                 </div>
-                                <h4 class="fw-bold">{{ categories_sessions|length }}</h4>
-                                <p class="mb-0 opacity-90">Categories</p>
+                                <h3 class="card-title mb-1 fw-bold">{{ categories_sessions|length }}</h3>
+                                <p class="card-text mb-3 opacity-90">Categories</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-lg-2 col-md-4 col-sm-6">
-                        <div class="card bg-danger text-white h-100">
-                            <div class="card-body text-center">
-                                <div class="mb-2">
-                                    <i class="fas fa-tags fa-2x opacity-75"></i>
+                        <div class="card stats-card bg-danger text-white h-100">
+                            <div class="card-body text-center d-flex flex-column justify-content-center">
+                                <div class="mb-3">
+                                    <i class="fas fa-tags fa-3x opacity-75"></i>
                                 </div>
-                                <h4 class="fw-bold">{{ tags_sessions|length }}</h4>
-                                <p class="mb-0 opacity-90">Tags</p>
+                                <h3 class="card-title mb-1 fw-bold">{{ tags_sessions|length }}</h3>
+                                <p class="card-text mb-3 opacity-90">Tags</p>
                             </div>
                         </div>
                     </div>
@@ -313,60 +313,4 @@
     </div>
 </div>
 {% endif %}
-{% endblock %}
-
-{% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize Bootstrap tooltips
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
-    });
-    
-    // Handle session row clicks
-    document.querySelectorAll('.session-row').forEach(function(row) {
-        row.addEventListener('click', function() {
-            var url = this.getAttribute('data-session-url');
-            if (url) {
-                window.location.href = url;
-            }
-        });
-        
-        // Add hover effect
-        row.addEventListener('mouseenter', function() {
-            this.style.backgroundColor = 'var(--light-bg)';
-        });
-        
-        row.addEventListener('mouseleave', function() {
-            this.style.backgroundColor = '';
-        });
-    });
-});
-</script>
-
-<style>
-.session-row {
-    transition: all 0.2s ease;
-}
-
-.session-row:hover {
-    transform: translateX(4px);
-}
-
-.table th {
-    font-weight: 600;
-    color: var(--text-primary);
-    border-bottom: 2px solid var(--border-color);
-}
-
-.table td {
-    vertical-align: middle;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.table-hover tbody tr:hover {
-    background-color: var(--light-bg);
-}
-</style>
 {% endblock %} 
