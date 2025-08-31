@@ -3,126 +3,211 @@
 {% block title %}Home - WordPress Archive Viewer{% endblock %}
 
 {% block content %}
-<div class="row">
+<!-- Hero Section -->
+<div class="row mb-5">
     <div class="col-12">
-        <h1 class="mb-4">
-            <i class="fas fa-archive"></i> WordPress Archive Dashboard
-        </h1>
+        <div class="text-center">
+            <h1 class="display-4 fw-bold mb-3">
+                <i class="fas fa-archive text-primary me-3"></i>
+                WordPress Archive Dashboard
+            </h1>
+            <p class="lead text-secondary mb-4">
+                Explore and manage your archived WordPress content with powerful search and organization tools
+            </p>
+            <div class="d-flex justify-content-center gap-3">
+                <a href="{{ url_for('posts') }}" class="btn btn-primary btn-lg">
+                    <i class="fas fa-newspaper me-2"></i>Browse Posts
+                </a>
+                <a href="{{ url_for('sessions') }}" class="btn btn-outline-primary btn-lg">
+                    <i class="fas fa-history me-2"></i>View Sessions
+                </a>
+            </div>
+        </div>
     </div>
 </div>
 
-<div class="row mb-4">
-    <div class="col-md-2">
+<!-- Statistics Cards -->
+<div class="row mb-5">
+    <div class="col-12">
+        <h2 class="h4 mb-4 text-center">
+            <i class="fas fa-chart-bar me-2"></i>Archive Statistics
+        </h2>
+    </div>
+</div>
+
+<div class="row g-4 mb-5">
+    <div class="col-md-2 col-sm-4 col-6">
         <div class="card stats-card bg-primary text-white h-100">
             <div class="card-body text-center d-flex flex-column justify-content-center">
-                <i class="fas fa-newspaper fa-2x mb-2"></i>
-                <h4 class="card-title mb-1">{{ stats.total_posts }}</h4>
-                <p class="card-text mb-2">Posts</p>
-                <a href="{{ url_for('posts') }}" class="btn btn-light btn-sm mt-auto">View Posts</a>
+                <div class="mb-3">
+                    <i class="fas fa-newspaper fa-3x opacity-75"></i>
+                </div>
+                <h3 class="card-title mb-1 fw-bold">{{ stats.total_posts | default(0) }}</h3>
+                <p class="card-text mb-3 opacity-90">Posts</p>
+                <a href="{{ url_for('posts') }}" class="btn btn-light btn-sm mt-auto">
+                    <i class="fas fa-arrow-right me-1"></i>View All
+                </a>
             </div>
         </div>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-2 col-sm-4 col-6">
         <div class="card stats-card bg-success text-white h-100">
             <div class="card-body text-center d-flex flex-column justify-content-center">
-                <i class="fas fa-file-alt fa-2x mb-2"></i>
-                <h4 class="card-title mb-1">{{ stats.total_pages }}</h4>
-                <p class="card-text mb-2">Pages</p>
-                <a href="{{ url_for('pages') }}" class="btn btn-light btn-sm mt-auto">View Pages</a>
+                <div class="mb-3">
+                    <i class="fas fa-file-alt fa-3x opacity-75"></i>
+                </div>
+                <h3 class="card-title mb-1 fw-bold">{{ stats.total_pages | default(0) }}</h3>
+                <p class="card-text mb-3 opacity-90">Pages</p>
+                <a href="{{ url_for('pages') }}" class="btn btn-light btn-sm mt-auto">
+                    <i class="fas fa-arrow-right me-1"></i>View All
+                </a>
             </div>
         </div>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-2 col-sm-4 col-6">
         <div class="card stats-card bg-info text-white h-100">
             <div class="card-body text-center d-flex flex-column justify-content-center">
-                <i class="fas fa-comments fa-2x mb-2"></i>
-                <h4 class="card-title mb-1">{{ stats.total_comments }}</h4>
-                <p class="card-text mb-2">Comments</p>
-                <a href="{{ url_for('comments') }}" class="btn btn-light btn-sm mt-auto">View Comments</a>
+                <div class="mb-3">
+                    <i class="fas fa-comments fa-3x opacity-75"></i>
+                </div>
+                <h3 class="card-title mb-1 fw-bold">{{ stats.total_comments | default(0) }}</h3>
+                <p class="card-text mb-3 opacity-90">Comments</p>
+                <a href="{{ url_for('comments') }}" class="btn btn-light btn-sm mt-auto">
+                    <i class="fas fa-arrow-right me-1"></i>View All
+                </a>
             </div>
         </div>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-2 col-sm-4 col-6">
         <div class="card stats-card bg-secondary text-white h-100">
             <div class="card-body text-center d-flex flex-column justify-content-center">
-                <i class="fas fa-users fa-2x mb-2"></i>
-                <h4 class="card-title mb-1">{{ stats.total_users }}</h4>
-                <p class="card-text mb-2">Users</p>
-                <a href="{{ url_for('users') }}" class="btn btn-light btn-sm mt-auto">View Users</a>
+                <div class="mb-3">
+                    <i class="fas fa-users fa-3x opacity-75"></i>
+                </div>
+                <h3 class="card-title mb-1 fw-bold">{{ stats.total_users | default(0) }}</h3>
+                <p class="card-text mb-3 opacity-90">Users</p>
+                <a href="{{ url_for('users') }}" class="btn btn-light btn-sm mt-auto">
+                    <i class="fas fa-arrow-right me-1"></i>View All
+                </a>
             </div>
         </div>
     </div>
-    <div class="col-md-2">
-        <div class="card stats-card bg-info text-white h-100">
-            <div class="card-body text-center d-flex flex-column justify-content-center">
-                <i class="fas fa-folder fa-2x mb-2"></i>
-                <h4 class="card-title mb-1">{{ stats.total_categories }}</h4>
-                <p class="card-text mb-2">Categories</p>
-                <a href="{{ url_for('categories') }}" class="btn btn-light btn-sm mt-auto">View Categories</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-2">
+    <div class="col-md-2 col-sm-4 col-6">
         <div class="card stats-card bg-warning text-white h-100">
             <div class="card-body text-center d-flex flex-column justify-content-center">
-                <i class="fas fa-tags fa-2x mb-2"></i>
-                <h4 class="card-title mb-1">{{ stats.total_tags }}</h4>
-                <p class="card-text mb-2">Tags</p>
-                <a href="{{ url_for('tags') }}" class="btn btn-light btn-sm mt-auto">View Tags</a>
+                <div class="mb-3">
+                    <i class="fas fa-folder fa-3x opacity-75"></i>
+                </div>
+                <h3 class="card-title mb-1 fw-bold">{{ stats.total_categories | default(0) }}</h3>
+                <p class="card-text mb-3 opacity-90">Categories</p>
+                <a href="{{ url_for('categories') }}" class="btn btn-light btn-sm mt-auto">
+                    <i class="fas fa-arrow-right me-1"></i>View All
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-sm-4 col-6">
+        <div class="card stats-card bg-danger text-white h-100">
+            <div class="card-body text-center d-flex flex-column justify-content-center">
+                <div class="mb-3">
+                    <i class="fas fa-tags fa-3x opacity-75"></i>
+                </div>
+                <h3 class="card-title mb-1 fw-bold">{{ stats.total_tags | default(0) }}</h3>
+                <p class="card-text mb-3 opacity-90">Tags</p>
+                <a href="{{ url_for('tags') }}" class="btn btn-light btn-sm mt-auto">
+                    <i class="fas fa-arrow-right me-1"></i>View All
+                </a>
             </div>
         </div>
     </div>
 </div>
 
-<div class="row mb-4">
+<!-- Summary Cards -->
+<div class="row g-4 mb-5">
     <div class="col-md-6">
         <div class="card stats-card bg-dark text-white h-100">
             <div class="card-body text-center d-flex flex-column justify-content-center">
-                <i class="fas fa-history fa-3x mb-3"></i>
-                <h2 class="card-title mb-2">{{ stats.total_posts + stats.total_pages + stats.total_comments + stats.total_users + stats.total_categories + stats.total_tags }}</h2>
-                <p class="card-text mb-3">Total Items</p>
+                <div class="mb-4">
+                    <i class="fas fa-database fa-4x opacity-75"></i>
+                </div>
+                <h2 class="card-title mb-2 fw-bold">
+                    {{ (stats.total_posts or 0) + (stats.total_pages or 0) + (stats.total_comments or 0) + (stats.total_users or 0) + (stats.total_categories or 0) + (stats.total_tags or 0) }}
+                </h2>
+                <p class="card-text mb-4 fs-5 opacity-90">Total Items Archived</p>
+                <div class="d-flex justify-content-center gap-2">
+                    <span class="badge bg-light text-dark">Posts: {{ stats.total_posts | default(0) }}</span>
+                    <span class="badge bg-light text-dark">Pages: {{ stats.total_pages | default(0) }}</span>
+                    <span class="badge bg-light text-dark">Comments: {{ stats.total_comments | default(0) }}</span>
+                </div>
             </div>
         </div>
     </div>
     <div class="col-md-6">
         <div class="card stats-card bg-success text-white h-100">
             <div class="card-body text-center d-flex flex-column justify-content-center">
-                <i class="fas fa-clock fa-3x mb-3"></i>
-                <h2 class="card-title mb-2">Archive Sessions</h2>
-                <p class="card-text mb-3">View History</p>
-                <a href="{{ url_for('sessions') }}" class="btn btn-light btn-sm">View Sessions</a>
+                <div class="mb-4">
+                    <i class="fas fa-clock fa-4x opacity-75"></i>
+                </div>
+                <h2 class="card-title mb-2 fw-bold">Archive Sessions</h2>
+                <p class="card-text mb-4 fs-5 opacity-90">Track your backup history</p>
+                <a href="{{ url_for('sessions') }}" class="btn btn-light btn-lg">
+                    <i class="fas fa-history me-2"></i>View Sessions
+                </a>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Latest Session Info -->
 {% if stats.latest_session %}
-<div class="row">
+<div class="row mb-5">
     <div class="col-12">
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-clock"></i> Latest Archive Session
+                    <i class="fas fa-clock me-2 text-primary"></i> Latest Archive Session
                 </h5>
             </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-md-3">
-                        <strong>Date:</strong><br>
-                        {{ stats.latest_session[0] }}
+                <div class="row g-4">
+                    <div class="col-md-3 col-sm-6">
+                        <div class="text-center">
+                            <div class="mb-2">
+                                <i class="fas fa-calendar fa-2x text-primary"></i>
+                            </div>
+                            <h6 class="fw-bold">Date</h6>
+                            <p class="text-secondary mb-0">{{ stats.latest_session[0] }}</p>
+                        </div>
                     </div>
-                    <div class="col-md-3">
-                        <strong>Content Type:</strong><br>
-                        <span class="badge bg-primary">{{ stats.latest_session[1] }}</span>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="text-center">
+                            <div class="mb-2">
+                                <i class="fas fa-file fa-2x text-success"></i>
+                            </div>
+                            <h6 class="fw-bold">Content Type</h6>
+                            <span class="badge bg-primary fs-6">{{ stats.latest_session[1] }}</span>
+                        </div>
                     </div>
-                    <div class="col-md-3">
-                        <strong>Processed:</strong><br>
-                        {{ stats.latest_session[2] }} items
+                    <div class="col-md-3 col-sm-6">
+                        <div class="text-center">
+                            <div class="mb-2">
+                                <i class="fas fa-cogs fa-2x text-info"></i>
+                            </div>
+                            <h6 class="fw-bold">Processed</h6>
+                            <p class="text-secondary mb-0">{{ stats.latest_session[2] }} items</p>
+                        </div>
                     </div>
-                    <div class="col-md-3">
-                        <strong>Results:</strong><br>
-                        <span class="badge bg-success">{{ stats.latest_session[3] }} new</span>
-                        <span class="badge bg-warning">{{ stats.latest_session[4] }} updated</span>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="text-center">
+                            <div class="mb-2">
+                                <i class="fas fa-chart-line fa-2x text-warning"></i>
+                            </div>
+                            <h6 class="fw-bold">Results</h6>
+                            <div class="d-flex justify-content-center gap-2">
+                                <span class="badge bg-success">{{ stats.latest_session[3] }} new</span>
+                                <span class="badge bg-warning">{{ stats.latest_session[4] }} updated</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -131,52 +216,149 @@
 </div>
 {% endif %}
 
-<div class="row mt-4">
-    <div class="col-12">
-        <div class="card">
+<!-- Quick Actions -->
+<div class="row g-4 mb-5">
+    <div class="col-md-6">
+        <div class="card h-100">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-search"></i> Quick Search
+                    <i class="fas fa-search me-2 text-primary"></i> Quick Search
                 </h5>
             </div>
             <div class="card-body">
                 <form method="GET" action="{{ url_for('posts') }}">
-                    <div class="input-group">
+                    <div class="input-group input-group-lg">
                         <input type="text" class="form-control" name="search" 
                                placeholder="Search posts, pages, or comments..." required>
                         <button class="btn btn-primary" type="submit">
-                            <i class="fas fa-search"></i> Search
+                            <i class="fas fa-search me-2"></i> Search
                         </button>
                     </div>
                 </form>
+                <div class="mt-3">
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Search across all archived content with powerful filtering
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-rocket me-2 text-success"></i> Quick Navigation
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <a href="{{ url_for('posts') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-newspaper me-2"></i>Posts
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ url_for('pages') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-file-alt me-2"></i>Pages
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ url_for('comments') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-comments me-2"></i>Comments
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ url_for('users') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-users me-2"></i>Users
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="row mt-4">
+<!-- About Section -->
+<div class="row">
     <div class="col-12">
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-info-circle"></i> About This Archive
+                    <i class="fas fa-info-circle me-2 text-primary"></i> About This Archive
                 </h5>
             </div>
             <div class="card-body">
-                <p>This archive contains all the WordPress content that has been backed up locally. 
-                The system automatically handles:</p>
-                <ul>
-                    <li><strong>Duplicate Prevention:</strong> Content is hashed to prevent storing duplicates</li>
-                    <li><strong>Version Control:</strong> When content changes, new versions are saved</li>
-                    <li><strong>Complete History:</strong> All versions of content are preserved</li>
-                    <li><strong>Search & Browse:</strong> Easy navigation through all archived content</li>
-                </ul>
-                <p class="mb-0">
-                    <small class="text-muted">
-                        Use the navigation menu above to browse different types of content, 
-                        or use the search function to find specific content.
-                    </small>
-                </p>
+                <div class="row g-4">
+                    <div class="col-md-8">
+                        <p class="lead mb-4">
+                            This archive contains all your WordPress content backed up locally with advanced features for content preservation and discovery.
+                        </p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-start">
+                                    <i class="fas fa-shield-alt text-success me-3 mt-1"></i>
+                                    <div>
+                                        <h6 class="fw-bold">Duplicate Prevention</h6>
+                                        <p class="text-secondary small mb-0">Content is hashed to prevent storing duplicates</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-start">
+                                    <i class="fas fa-code-branch text-primary me-3 mt-1"></i>
+                                    <div>
+                                        <h6 class="fw-bold">Version Control</h6>
+                                        <p class="text-secondary small mb-0">New versions are saved when content changes</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-start">
+                                    <i class="fas fa-history text-info me-3 mt-1"></i>
+                                    <div>
+                                        <h6 class="fw-bold">Complete History</h6>
+                                        <p class="text-secondary small mb-0">All versions of content are preserved</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-start">
+                                    <i class="fas fa-search text-warning me-3 mt-1"></i>
+                                    <div>
+                                        <h6 class="fw-bold">Search & Browse</h6>
+                                        <p class="text-secondary small mb-0">Easy navigation through all archived content</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="bg-light p-4 rounded">
+                            <h6 class="fw-bold mb-3">
+                                <i class="fas fa-lightbulb me-2 text-warning"></i>Getting Started
+                            </h6>
+                            <ul class="list-unstyled mb-0">
+                                <li class="mb-2">
+                                    <i class="fas fa-arrow-right text-primary me-2"></i>
+                                    Use the navigation menu to browse content
+                                </li>
+                                <li class="mb-2">
+                                    <i class="fas fa-arrow-right text-primary me-2"></i>
+                                    Search for specific content using the search bar
+                                </li>
+                                <li class="mb-2">
+                                    <i class="fas fa-arrow-right text-primary me-2"></i>
+                                    View archive sessions to track backup history
+                                </li>
+                                <li>
+                                    <i class="fas fa-arrow-right text-primary me-2"></i>
+                                    Explore different content types and versions
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

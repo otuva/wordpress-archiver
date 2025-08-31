@@ -3,81 +3,284 @@
 {% block title %}Archive Sessions - WordPress Archive Viewer{% endblock %}
 
 {% block content %}
-<div class="row">
+<!-- Header Section -->
+<div class="row mb-4">
     <div class="col-12">
-        <h1 class="mb-4">
-            <i class="fas fa-history"></i> Archive Sessions
-        </h1>
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h2 mb-2">
+                    <i class="fas fa-history text-primary me-3"></i>
+                    Archive Sessions
+                </h1>
+                <p class="text-secondary mb-0">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Track your WordPress archive history and backup sessions
+                </p>
+            </div>
+            <a href="{{ url_for('index') }}" class="btn btn-outline-primary">
+                <i class="fas fa-home me-2"></i>Back to Dashboard
+            </a>
+        </div>
     </div>
 </div>
 
 {% if sessions %}
+<!-- Summary Statistics -->
+<div class="row g-4 mb-5">
+    <div class="col-md-3 col-sm-6">
+        <div class="card stats-card bg-primary text-white h-100">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-history fa-3x opacity-75"></i>
+                </div>
+                <h3 class="fw-bold">{{ sessions|length }}</h3>
+                <p class="mb-0 opacity-90">Total Sessions</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card stats-card bg-info text-white h-100">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-cogs fa-3x opacity-75"></i>
+                </div>
+                <h3 class="fw-bold">{{ sessions|sum(attribute='items_processed') }}</h3>
+                <p class="mb-0 opacity-90">Items Processed</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card stats-card bg-success text-white h-100">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-plus-circle fa-3x opacity-75"></i>
+                </div>
+                <h3 class="fw-bold">{{ sessions|sum(attribute='items_new') }}</h3>
+                <p class="mb-0 opacity-90">New Items</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card stats-card bg-warning text-white h-100">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-edit fa-3x opacity-75"></i>
+                </div>
+                <h3 class="fw-bold">{{ sessions|sum(attribute='items_updated') }}</h3>
+                <p class="mb-0 opacity-90">Updated Items</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Content Type Breakdown -->
+<div class="row mb-5">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-pie me-2 text-primary"></i> Content Type Breakdown
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    {% set posts_sessions = sessions|selectattr('content_type', 'equalto', 'posts')|list %}
+                    {% set comments_sessions = sessions|selectattr('content_type', 'equalto', 'comments')|list %}
+                    {% set pages_sessions = sessions|selectattr('content_type', 'equalto', 'pages')|list %}
+                    {% set users_sessions = sessions|selectattr('content_type', 'equalto', 'users')|list %}
+                    {% set categories_sessions = sessions|selectattr('content_type', 'equalto', 'categories')|list %}
+                    {% set tags_sessions = sessions|selectattr('content_type', 'equalto', 'tags')|list %}
+                    
+                    <div class="col-lg-2 col-md-4 col-sm-6">
+                        <div class="card bg-primary text-white h-100">
+                            <div class="card-body text-center">
+                                <div class="mb-2">
+                                    <i class="fas fa-newspaper fa-2x opacity-75"></i>
+                                </div>
+                                <h4 class="fw-bold">{{ posts_sessions|length }}</h4>
+                                <p class="mb-0 opacity-90">Posts</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-sm-6">
+                        <div class="card bg-info text-white h-100">
+                            <div class="card-body text-center">
+                                <div class="mb-2">
+                                    <i class="fas fa-comments fa-2x opacity-75"></i>
+                                </div>
+                                <h4 class="fw-bold">{{ comments_sessions|length }}</h4>
+                                <p class="mb-0 opacity-90">Comments</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-sm-6">
+                        <div class="card bg-success text-white h-100">
+                            <div class="card-body text-center">
+                                <div class="mb-2">
+                                    <i class="fas fa-file-alt fa-2x opacity-75"></i>
+                                </div>
+                                <h4 class="fw-bold">{{ pages_sessions|length }}</h4>
+                                <p class="mb-0 opacity-90">Pages</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-sm-6">
+                        <div class="card bg-secondary text-white h-100">
+                            <div class="card-body text-center">
+                                <div class="mb-2">
+                                    <i class="fas fa-users fa-2x opacity-75"></i>
+                                </div>
+                                <h4 class="fw-bold">{{ users_sessions|length }}</h4>
+                                <p class="mb-0 opacity-90">Users</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-sm-6">
+                        <div class="card bg-warning text-white h-100">
+                            <div class="card-body text-center">
+                                <div class="mb-2">
+                                    <i class="fas fa-folder fa-2x opacity-75"></i>
+                                </div>
+                                <h4 class="fw-bold">{{ categories_sessions|length }}</h4>
+                                <p class="mb-0 opacity-90">Categories</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-sm-6">
+                        <div class="card bg-danger text-white h-100">
+                            <div class="card-body text-center">
+                                <div class="mb-2">
+                                    <i class="fas fa-tags fa-2x opacity-75"></i>
+                                </div>
+                                <h4 class="fw-bold">{{ tags_sessions|length }}</h4>
+                                <p class="mb-0 opacity-90">Tags</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sessions Table -->
 <div class="row">
     <div class="col-12">
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-list"></i> Recent Archive Sessions (Last 50)
+                    <i class="fas fa-list me-2 text-primary"></i> Recent Archive Sessions
+                    <span class="badge bg-secondary ms-2">Last 50</span>
                 </h5>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
+                    <table class="table table-hover">
+                        <thead class="table-light">
                             <tr>
-                                <th>Date</th>
-                                <th>Content Type</th>
-                                <th>Processed</th>
-                                <th>New</th>
-                                <th>Updated</th>
-                                <th>Errors</th>
+                                <th>
+                                    <i class="fas fa-calendar me-1"></i>Date
+                                </th>
+                                <th>
+                                    <i class="fas fa-file me-1"></i>Content Type
+                                </th>
+                                <th>
+                                    <i class="fas fa-cogs me-1"></i>Processed
+                                </th>
+                                <th>
+                                    <i class="fas fa-plus me-1"></i>New
+                                </th>
+                                <th>
+                                    <i class="fas fa-edit me-1"></i>Updated
+                                </th>
+                                <th>
+                                    <i class="fas fa-exclamation-triangle me-1"></i>Errors
+                                </th>
+                                <th>
+                                    <i class="fas fa-info-circle me-1"></i>Status
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for session in sessions %}
                             <tr class="session-row" style="cursor: pointer;" data-session-url="{{ url_for('session_detail', session_id=session['id']) }}">
                                 <td>
-                                    <i class="fas fa-clock"></i>
-                                    {{ session['session_date'] }}
+                                    <div class="d-flex align-items-center">
+                                        <i class="fas fa-clock text-primary me-2"></i>
+                                        <div>
+                                            <div class="fw-bold">{{ session['session_date'][:10] }}</div>
+                                            <small class="text-muted">{{ session['session_date'][11:19] }}</small>
+                                        </div>
+                                    </div>
                                 </td>
                                 <td>
                                     {% if session['content_type'] == 'posts' %}
-                                        <span class="badge bg-primary">{{ session['content_type'] }}</span>
+                                        <span class="badge bg-primary fs-6">
+                                            <i class="fas fa-newspaper me-1"></i>{{ session['content_type'] }}
+                                        </span>
                                     {% elif session['content_type'] == 'comments' %}
-                                        <span class="badge bg-info">{{ session['content_type'] }}</span>
+                                        <span class="badge bg-info fs-6">
+                                            <i class="fas fa-comments me-1"></i>{{ session['content_type'] }}
+                                        </span>
                                     {% elif session['content_type'] == 'pages' %}
-                                        <span class="badge bg-success">{{ session['content_type'] }}</span>
+                                        <span class="badge bg-success fs-6">
+                                            <i class="fas fa-file-alt me-1"></i>{{ session['content_type'] }}
+                                        </span>
                                     {% elif session['content_type'] == 'users' %}
-                                        <span class="badge bg-secondary">{{ session['content_type'] }}</span>
+                                        <span class="badge bg-secondary fs-6">
+                                            <i class="fas fa-users me-1"></i>{{ session['content_type'] }}
+                                        </span>
                                     {% elif session['content_type'] == 'categories' %}
-                                        <span class="badge bg-info">{{ session['content_type'] }}</span>
+                                        <span class="badge bg-warning fs-6">
+                                            <i class="fas fa-folder me-1"></i>{{ session['content_type'] }}
+                                        </span>
                                     {% elif session['content_type'] == 'tags' %}
-                                        <span class="badge bg-warning">{{ session['content_type'] }}</span>
+                                        <span class="badge bg-danger fs-6">
+                                            <i class="fas fa-tags me-1"></i>{{ session['content_type'] }}
+                                        </span>
                                     {% elif 'Archive of' in session['content_type'] %}
-                                        <span class="badge bg-dark" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ session['content_type'] }}">Complete Archive</span>
+                                        <span class="badge bg-dark fs-6" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ session['content_type'] }}">
+                                            <i class="fas fa-archive me-1"></i>Complete Archive
+                                        </span>
                                     {% elif 'INTERRUPTED' in session['content_type'] %}
-                                        <span class="badge bg-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ session['content_type'] }}">Interrupted</span>
+                                        <span class="badge bg-danger fs-6" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ session['content_type'] }}">
+                                            <i class="fas fa-stop-circle me-1"></i>Interrupted
+                                        </span>
                                     {% elif 'FAILED VERIFICATION' in session['content_type'] %}
-                                        <span class="badge bg-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ session['content_type'] }}">Failed Verification</span>
+                                        <span class="badge bg-danger fs-6" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ session['content_type'] }}">
+                                            <i class="fas fa-times-circle me-1"></i>Failed Verification
+                                        </span>
                                     {% else %}
-                                        <span class="badge bg-primary">{{ session['content_type'] }}</span>
+                                        <span class="badge bg-primary fs-6">
+                                            <i class="fas fa-file me-1"></i>{{ session['content_type'] }}
+                                        </span>
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <span class="badge bg-info">{{ session['items_processed'] }}</span>
+                                    <span class="badge bg-info fs-6">{{ session['items_processed'] }}</span>
                                 </td>
                                 <td>
-                                    <span class="badge bg-success">{{ session['items_new'] }}</span>
+                                    <span class="badge bg-success fs-6">{{ session['items_new'] }}</span>
                                 </td>
                                 <td>
-                                    <span class="badge bg-warning">{{ session['items_updated'] }}</span>
+                                    <span class="badge bg-warning fs-6">{{ session['items_updated'] }}</span>
                                 </td>
                                 <td>
                                     {% if session['errors'] and session['errors'] != '[]' %}
-                                        <span class="badge bg-danger">Yes</span>
+                                        <span class="badge bg-danger fs-6">
+                                            <i class="fas fa-exclamation-triangle me-1"></i>Yes
+                                        </span>
                                     {% else %}
-                                        <span class="badge bg-success">No</span>
+                                        <span class="badge bg-success fs-6">
+                                            <i class="fas fa-check-circle me-1"></i>No
+                                        </span>
                                     {% endif %}
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <i class="fas fa-chevron-right text-muted"></i>
+                                        <small class="text-muted ms-1">Click to view</small>
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -89,135 +292,27 @@
     </div>
 </div>
 
-<!-- Summary Statistics -->
-<div class="row mt-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="fas fa-chart-bar"></i> Session Summary
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-3 text-center">
-                        <h4 class="text-primary">{{ sessions|length }}</h4>
-                        <p class="text-muted">Total Sessions</p>
-                    </div>
-                    <div class="col-md-3 text-center">
-                        <h4 class="text-info">
-                            {{ sessions|sum(attribute='items_processed') }}
-                        </h4>
-                        <p class="text-muted">Total Items Processed</p>
-                    </div>
-                    <div class="col-md-3 text-center">
-                        <h4 class="text-success">
-                            {{ sessions|sum(attribute='items_new') }}
-                        </h4>
-                        <p class="text-muted">Total New Items</p>
-                    </div>
-                    <div class="col-md-3 text-center">
-                        <h4 class="text-warning">
-                            {{ sessions|sum(attribute='items_updated') }}
-                        </h4>
-                        <p class="text-muted">Total Updated Items</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Content Type Breakdown -->
-<div class="row mt-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="fas fa-chart-pie"></i> Content Type Breakdown
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    {% set posts_sessions = sessions|selectattr('content_type', 'equalto', 'posts')|list %}
-                    {% set comments_sessions = sessions|selectattr('content_type', 'equalto', 'comments')|list %}
-                    {% set pages_sessions = sessions|selectattr('content_type', 'equalto', 'pages')|list %}
-                    {% set users_sessions = sessions|selectattr('content_type', 'equalto', 'users')|list %}
-                    {% set categories_sessions = sessions|selectattr('content_type', 'equalto', 'categories')|list %}
-                    {% set tags_sessions = sessions|selectattr('content_type', 'equalto', 'tags')|list %}
-                    
-                    <div class="col-md-2 text-center">
-                        <div class="card bg-primary text-white">
-                            <div class="card-body">
-                                <h5>{{ posts_sessions|length }}</h5>
-                                <p class="mb-0">Posts</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2 text-center">
-                        <div class="card bg-info text-white">
-                            <div class="card-body">
-                                <h5>{{ comments_sessions|length }}</h5>
-                                <p class="mb-0">Comments</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2 text-center">
-                        <div class="card bg-success text-white">
-                            <div class="card-body">
-                                <h5>{{ pages_sessions|length }}</h5>
-                                <p class="mb-0">Pages</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2 text-center">
-                        <div class="card bg-secondary text-white">
-                            <div class="card-body">
-                                <h5>{{ users_sessions|length }}</h5>
-                                <p class="mb-0">Users</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2 text-center">
-                        <div class="card bg-info text-white">
-                            <div class="card-body">
-                                <h5>{{ categories_sessions|length }}</h5>
-                                <p class="mb-0">Categories</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2 text-center">
-                        <div class="card bg-warning text-white">
-                            <div class="card-body">
-                                <h5>{{ tags_sessions|length }}</h5>
-                                <p class="mb-0">Tags</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% else %}
+<!-- No Sessions Found -->
 <div class="row">
     <div class="col-12">
-        <div class="alert alert-info text-center">
-            <i class="fas fa-info-circle"></i>
-            No archive sessions found. Run the archiver to create sessions.
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <div class="mb-4">
+                    <i class="fas fa-history fa-4x text-muted"></i>
+                </div>
+                <h3 class="text-muted mb-3">No Archive Sessions Found</h3>
+                <p class="text-secondary mb-4">
+                    Run the WordPress archiver to create your first backup session and start tracking your content history.
+                </p>
+                <a href="{{ url_for('index') }}" class="btn btn-primary">
+                    <i class="fas fa-home me-2"></i>Go to Dashboard
+                </a>
+            </div>
         </div>
     </div>
 </div>
 {% endif %}
-
-<div class="row mt-4">
-    <div class="col-12 text-center">
-        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
-            <i class="fas fa-home"></i> Back to Dashboard
-        </a>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -237,7 +332,41 @@ document.addEventListener('DOMContentLoaded', function() {
                 window.location.href = url;
             }
         });
+        
+        // Add hover effect
+        row.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = 'var(--light-bg)';
+        });
+        
+        row.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = '';
+        });
     });
 });
 </script>
+
+<style>
+.session-row {
+    transition: all 0.2s ease;
+}
+
+.session-row:hover {
+    transform: translateX(4px);
+}
+
+.table th {
+    font-weight: 600;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-color);
+}
+
+.table td {
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--light-bg);
+}
+</style>
 {% endblock %} 

@@ -3,191 +3,306 @@
 {% block title %}{{ (post_versions[0].title or 'Untitled') | render_html }} - WordPress Archive Viewer{% endblock %}
 
 {% block content %}
-<div class="row">
+<!-- Breadcrumb Navigation -->
+<div class="row mb-4">
     <div class="col-12">
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item">
-                    <a href="{{ url_for('posts') }}">
-                        <i class="fas fa-newspaper"></i> Posts
+                    <a href="{{ url_for('posts') }}" class="text-decoration-none">
+                        <i class="fas fa-newspaper me-1"></i> Posts
                     </a>
                 </li>
-                <li class="breadcrumb-item active">{{ (post_versions[0].title or 'Untitled') | render_html }}</li>
+                <li class="breadcrumb-item active" aria-current="page">
+                    {{ (post_versions[0].title or 'Untitled') | render_html }}
+                </li>
             </ol>
         </nav>
     </div>
 </div>
 
-<div class="row">
+<!-- Post Header -->
+<div class="row mb-4">
     <div class="col-12">
-        <h1 class="mb-4">
-            <i class="fas fa-newspaper"></i> 
-            {{ (post_versions[0].title or 'Untitled') | render_html }}
-            <span class="badge bg-primary">ID: {{ post_versions[0].wp_id }}</span>
-        </h1>
+        <div class="d-flex justify-content-between align-items-start">
+            <div class="flex-grow-1">
+                <h1 class="h2 mb-3">
+                    <i class="fas fa-newspaper text-primary me-3"></i>
+                    {{ (post_versions[0].title or 'Untitled') | render_html }}
+                </h1>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="badge bg-primary fs-6">ID: {{ post_versions[0].wp_id }}</span>
+                    <span class="badge bg-{{ 'success' if post_versions[0].status == 'publish' else 'warning' }} fs-6">
+                        {{ post_versions[0].status }}
+                    </span>
+                    <span class="badge bg-info fs-6">v{{ post_versions[0].version }}</span>
+                </div>
+            </div>
+            <a href="{{ url_for('posts') }}" class="btn btn-outline-primary">
+                <i class="fas fa-arrow-left me-2"></i>Back to Posts
+            </a>
+        </div>
     </div>
 </div>
 
 <!-- Version History -->
 {% if post_versions|length > 1 %}
-<div class="row mb-4">
+<div class="row mb-5">
     <div class="col-12">
-        <div class="version-history">
-            <h5><i class="fas fa-history"></i> Version History ({{ post_versions|length }} versions)</h5>
-            <div class="row">
-                {% for version in post_versions %}
-                <div class="col-md-4 mb-2">
-                    <div class="card {% if selected_version and selected_version == version.version %}border-primary{% endif %}">
-                        <div class="card-header">
-                            <a href="{{ url_for('post_detail', wp_id=version.wp_id) }}?version={{ version.version }}" class="text-decoration-none">
-                                <span class="badge bg-{% if selected_version and selected_version == version.version %}success{% else %}primary{% endif %}">Version {{ version.version }}</span>
-                            </a>
-                            <small class="text-muted float-end">{{ version.date_modified[:10] }}</small>
-                        </div>
-                        <div class="card-body">
-                            <small class="text-muted">Archived: {{ version.created_at[:10] }}</small>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-history me-2 text-primary"></i> Version History
+                    <span class="badge bg-secondary ms-2">{{ post_versions|length }} versions</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    {% for version in post_versions %}
+                    <div class="col-lg-3 col-md-4 col-sm-6">
+                        <div class="card version-card {% if selected_version and selected_version == version.version %}border-primary shadow-sm{% endif %} h-100">
+                            <div class="card-header text-center">
+                                <a href="{{ url_for('post_detail', wp_id=version.wp_id) }}?version={{ version.version }}" 
+                                   class="text-decoration-none">
+                                    <span class="badge bg-{% if selected_version and selected_version == version.version %}success{% else %}primary{% endif %} fs-6">
+                                        Version {{ version.version }}
+                                    </span>
+                                </a>
+                            </div>
+                            <div class="card-body text-center">
+                                <div class="mb-2">
+                                    <i class="fas fa-calendar text-muted me-1"></i>
+                                    <small class="text-muted">{{ version.date_modified[:10] }}</small>
+                                </div>
+                                <div>
+                                    <i class="fas fa-clock text-muted me-1"></i>
+                                    <small class="text-muted">Archived: {{ version.created_at[:10] }}</small>
+                                </div>
+                            </div>
                         </div>
                     </div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
             </div>
         </div>
     </div>
 </div>
 {% endif %}
 
-<!-- Latest Version Content -->
-<div class="row">
-    <div class="col-12">
+<!-- Post Content -->
+<div class="row g-4">
+    <!-- Main Content -->
+    <div class="col-lg-8">
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-file-text"></i> Content 
+                    <i class="fas fa-file-text me-2 text-primary"></i> Content
                     {% if selected_version %}
-                        (Version {{ selected_version }})
+                        <span class="badge bg-warning ms-2">Version {{ selected_version }}</span>
                     {% else %}
-                        (Latest Version)
+                        <span class="badge bg-success ms-2">Latest Version</span>
                     {% endif %}
-                    <span class="badge bg-primary">v{{ post_versions[0].version }}</span>
                 </h5>
             </div>
             <div class="card-body">
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <strong>Title:</strong><br>
-                        {{ (post_versions[0].title or 'Untitled') | render_html }}
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Status:</strong><br>
-                        <span class="badge bg-{{ 'success' if post_versions[0].status == 'publish' else 'warning' }}">
-                            {{ post_versions[0].status }}
-                        </span>
-                    </div>
-                </div>
-                
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <strong>Created:</strong><br>
-                        {{ post_versions[0].date_created }}
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Modified:</strong><br>
-                        {{ post_versions[0].date_modified }}
-                    </div>
-                </div>
-                
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <strong>Author ID:</strong><br>
-                        <i class="fas fa-user"></i> {{ post_versions[0].author_id }}
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Archived:</strong><br>
-                        <i class="fas fa-clock"></i> {{ post_versions[0].created_at }}
-                    </div>
-                </div>
-                
-                {% if post_versions[0].excerpt %}
-                <div class="row mb-3">
+                <div class="content-html">{{ post_versions[0].content | render_html }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-info-circle me-2 text-primary"></i> Post Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
                     <div class="col-12">
-                        <strong>Excerpt:</strong><br>
-                        <div class="content-html">{{ post_versions[0].excerpt | render_html }}</div>
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-user text-primary me-3"></i>
+                            <div>
+                                <small class="text-muted d-block">Author ID</small>
+                                <strong>{{ post_versions[0].author_id }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-calendar-plus text-success me-3"></i>
+                            <div>
+                                <small class="text-muted d-block">Created</small>
+                                <strong>{{ post_versions[0].date_created }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-edit text-warning me-3"></i>
+                            <div>
+                                <small class="text-muted d-block">Modified</small>
+                                <strong>{{ post_versions[0].date_modified }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-clock text-info me-3"></i>
+                            <div>
+                                <small class="text-muted d-block">Archived</small>
+                                <strong>{{ post_versions[0].created_at }}</strong>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                {% endif %}
-                
-                <div class="row">
-                    <div class="col-12">
-                        <strong>Content:</strong><br>
-                        <div class="content-html">{{ post_versions[0].content | render_html }}</div>
-                    </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-rocket me-2 text-success"></i> Quick Actions
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('users') }}?search={{ post_versions[0].author_id }}" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-user me-2"></i>View Author
+                    </a>
+                    <a href="{{ url_for('comments') }}?search={{ post_versions[0].wp_id }}" class="btn btn-outline-info btn-sm">
+                        <i class="fas fa-comments me-2"></i>View Comments
+                    </a>
+                    <a href="{{ url_for('posts') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-list me-2"></i>All Posts
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Comments -->
+<!-- Comments Section -->
 {% if comments %}
-<div class="row mt-4">
+<div class="row mt-5">
     <div class="col-12">
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-comments"></i> Comments ({{ comments|length }})
+                    <i class="fas fa-comments me-2 text-primary"></i> Comments
+                    <span class="badge bg-secondary ms-2">{{ comments|length }}</span>
                 </h5>
             </div>
             <div class="card-body">
-                {% for comment in comments %}
-                <div class="comment-item" style="margin-left: {{ comment.level | calculate_indentation }}px; {% if comment.level > 0 %}border-left: 3px solid #28a745; padding-left: 10px;{% endif %}">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <div>
-                            <div class="comment-author">
-                                <i class="fas fa-user"></i> 
-                                {{ comment.author_name or 'Anonymous' }}
-                                {% if comment.author_email %}
-                                    <span class="comment-email">({{ comment.author_email }})</span>
-                                {% endif %}
-                                {% if comment.author_url %}
-                                    <a href="{{ comment.author_url }}" target="_blank" class="comment-url">
-                                        <i class="fas fa-external-link-alt"></i>
-                                    </a>
-                                {% endif %}
-
+                <div class="comments-container">
+                    {% for comment in comments %}
+                    <div class="comment-item" style="margin-left: {{ comment.level | calculate_indentation }}px;">
+                        <div class="comment-header d-flex justify-content-between align-items-start mb-3">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="comment-author-info">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="fas fa-user-circle text-primary"></i>
+                                        <strong>{{ comment.author_name or 'Anonymous' }}</strong>
+                                        {% if comment.author_email %}
+                                            <small class="text-muted">({{ comment.author_email }})</small>
+                                        {% endif %}
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2 mt-1">
+                                        <span class="badge bg-primary version-badge">v{{ comment.version }}</span>
+                                        <span class="badge bg-{{ 'success' if comment.status == 'approved' else 'warning' }}">
+                                            {{ comment.status }}
+                                        </span>
+                                        {% if comment.author_url %}
+                                            <a href="{{ comment.author_url }}" target="_blank" class="comment-url">
+                                                <i class="fas fa-external-link-alt"></i>
+                                            </a>
+                                        {% endif %}
+                                    </div>
+                                </div>
                             </div>
-                            <span class="badge bg-primary version-badge">v{{ comment.version }}</span>
+                            <div class="text-end">
+                                <div class="comment-meta">
+                                    <i class="fas fa-clock me-1"></i>{{ comment.date_created[:10] }}
+                                </div>
+                            </div>
                         </div>
-                        <div class="text-end">
-                            <div class="comment-meta">
-                                <i class="fas fa-clock"></i> {{ comment.date_created[:10] }}
-                            </div>
-                            <span class="badge bg-{{ 'success' if comment.status == 'approved' else 'warning' }}">
-                                {{ comment.status }}
-                            </span>
+                        <div class="comment-content">
+                            <div class="content-html">{{ comment.content | render_html }}</div>
                         </div>
                     </div>
-                    <div class="content-html mt-2">{{ comment.content | render_html }}</div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
             </div>
         </div>
     </div>
 </div>
 {% else %}
-<div class="row mt-4">
+<div class="row mt-5">
     <div class="col-12">
-        <div class="alert alert-info">
-            <i class="fas fa-info-circle"></i> No comments found for this post.
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <div class="mb-3">
+                    <i class="fas fa-comments fa-3x text-muted"></i>
+                </div>
+                <h5 class="text-muted mb-2">No Comments</h5>
+                <p class="text-secondary mb-0">This post doesn't have any comments yet.</p>
+            </div>
         </div>
     </div>
 </div>
 {% endif %}
+{% endblock %}
 
-<div class="row mt-4">
-    <div class="col-12 text-center">
-        <a href="{{ url_for('posts') }}" class="btn btn-outline-secondary">
-            <i class="fas fa-arrow-left"></i> Back to Posts
-        </a>
-    </div>
-</div>
-{% endblock %} 
+{% block scripts %}
+<style>
+.version-card {
+    transition: all 0.3s ease;
+}
+
+.version-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.comments-container {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.comment-item {
+    border-left: 4px solid var(--primary-color);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    background: var(--card-bg);
+    border-radius: 0 var(--border-radius-sm) var(--border-radius-sm) 0;
+    box-shadow: var(--shadow-sm);
+}
+
+.comment-item:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.comment-content {
+    background: var(--light-bg);
+    padding: 1rem;
+    border-radius: var(--border-radius-sm);
+    margin-top: 1rem;
+}
+
+.breadcrumb {
+    background: var(--light-bg);
+    padding: 1rem;
+    border-radius: var(--border-radius-sm);
+}
+
+.breadcrumb-item a {
+    color: var(--primary-color);
+}
+
+.breadcrumb-item.active {
+    color: var(--text-secondary);
+}
+</style>
+{% endblock %}
