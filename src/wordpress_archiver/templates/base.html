@@ -436,33 +436,13 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {{ 'active' if request.endpoint == 'pages' }}" href="{{ url_for('pages') }}">
-                            <i class="fas fa-file-alt"></i> Pages
-                        </a>
-                    </li>
-                    <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.endpoint == 'comments' }}" href="{{ url_for('comments') }}">
                             <i class="fas fa-comments"></i> Comments
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {{ 'active' if request.endpoint == 'users' }}" href="{{ url_for('users') }}">
-                            <i class="fas fa-users"></i> Users
-                        </a>
-                    </li>
-                    <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.endpoint == 'categories' }}" href="{{ url_for('categories') }}">
                             <i class="fas fa-folder"></i> Categories
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {{ 'active' if request.endpoint == 'tags' }}" href="{{ url_for('tags') }}">
-                            <i class="fas fa-tags"></i> Tags
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {{ 'active' if request.endpoint == 'sessions' }}" href="{{ url_for('sessions') }}">
-                            <i class="fas fa-history"></i> Sessions
                         </a>
                     </li>
                 </ul>
