@@ -165,8 +165,95 @@ class WordPressArchiver:
             conn.commit()
     
     def calculate_content_hash(self, content: str) -> str:
-        """Calculate SHA-256 hash of content for change detection."""
-        return hashlib.sha256(content.encode('utf-8')).hexdigest()
+        """Calculate SHA-256 hash of normalized content for change detection."""
+        normalized_content = self.normalize_content(content)
+        return hashlib.sha256(normalized_content.encode('utf-8')).hexdigest()
+    
+    def normalize_content(self, content: str) -> str:
+        """
+        Normalize content by removing dynamic elements that change between requests.
+        
+        :param content: Raw HTML content from WordPress
+        :return: Normalized content for consistent hashing
+        """
+        if not content:
+            return ""
+        
+        # Remove ShareThis widgets and similar dynamic social sharing elements
+        import re
+        import html
+        
+        # Remove ShareThis inline share buttons
+        content = re.sub(
+            r'<div[^>]*class="[^"]*sharethis[^"]*"[^>]*>.*?</div>',
+            '',
+            content,
+            flags=re.DOTALL | re.IGNORECASE
+        )
+        
+        # Remove other common dynamic social sharing widgets
+        content = re.sub(
+            r'<div[^>]*class="[^"]*(?:social-share|share-buttons|social-media)[^"]*"[^>]*>.*?</div>',
+            '',
+            content,
+            flags=re.DOTALL | re.IGNORECASE
+        )
+        
+        # Remove dynamic ad elements
+        content = re.sub(
+            r'<div[^>]*class="[^"]*(?:adsbygoogle|advertisement|ad-container)[^"]*"[^>]*>.*?</div>',
+            '',
+            content,
+            flags=re.DOTALL | re.IGNORECASE
+        )
+        
+        # Remove script tags that might contain dynamic content
+        content = re.sub(
+            r'<script[^>]*>.*?</script>',
+            '',
+            content,
+            flags=re.DOTALL | re.IGNORECASE
+        )
+        
+        # Remove inline styles that might be dynamically generated
+        content = re.sub(
+            r'style="[^"]*"',
+            '',
+            content
+        )
+        
+        # Remove data attributes that might be dynamic
+        content = re.sub(
+            r'data-[^=]*="[^"]*"',
+            '',
+            content
+        )
+        
+        # Remove empty divs and spans that might be left after cleaning
+        content = re.sub(
+            r'<div[^>]*>\s*</div>',
+            '',
+            content
+        )
+        content = re.sub(
+            r'<span[^>]*>\s*</span>',
+            '',
+            content
+        )
+        
+        # Normalize HTML entities (convert all to decimal format)
+        # First, decode all HTML entities to their actual characters
+        content = html.unescape(content)
+        
+        # Then re-encode them consistently (this will use decimal format)
+        # We need to handle this manually since html.escape() doesn't give us control
+        # over the format, so we'll just leave them decoded for now
+        
+        # Normalize whitespace
+        content = re.sub(r'\s+', ' ', content)
+        content = content.strip()
+        
+        return content
     
     def is_date_after_filter(self, item_date: str, after_date: Optional[datetime]) -> bool:
         """
