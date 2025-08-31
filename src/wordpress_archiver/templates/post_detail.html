@@ -160,27 +160,7 @@
             </div>
         </div>
 
-        <!-- Quick Actions -->
-        <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0">
-                    <i class="fas fa-rocket me-2 text-success"></i> Quick Actions
-                </h6>
-            </div>
-            <div class="card-body">
-                <div class="d-grid gap-2">
-                    <a href="{{ url_for('users') }}?search={{ post_versions[0].author_id }}" class="btn btn-outline-primary btn-sm">
-                        <i class="fas fa-user me-2"></i>View Author
-                    </a>
-                    <a href="{{ url_for('comments') }}?search={{ post_versions[0].wp_id }}" class="btn btn-outline-info btn-sm">
-                        <i class="fas fa-comments me-2"></i>View Comments
-                    </a>
-                    <a href="{{ url_for('posts') }}" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-list me-2"></i>All Posts
-                    </a>
-                </div>
-            </div>
-        </div>
+
     </div>
 </div>
 
