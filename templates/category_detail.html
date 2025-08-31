@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}{{ category_versions[0].name }} - Category Details - WordPress Archive Viewer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Home</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('categories') }}">Categories</a></li>
+                <li class="breadcrumb-item active">{{ category_versions[0].name | render_html }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>
+                <i class="fas fa-folder"></i> {{ category_versions[0].name | render_html }}
+            </h1>
+            <div>
+                <span class="badge bg-primary">{{ category_versions|length }} version{{ 's' if category_versions|length != 1 else '' }}</span>
+                {% if category_versions[0].link %}
+                <a href="{{ category_versions[0].link }}" target="_blank" class="btn btn-outline-secondary ms-2">
+                    <i class="fas fa-external-link-alt"></i> View Original
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <!-- Version History -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-history"></i> Version History
+                </h5>
+            </div>
+            <div class="card-body">
+                {% for category in category_versions %}
+                <div class="version-item mb-3 p-3 border rounded {% if loop.first %}border-primary{% endif %}">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <span class="badge bg-primary">Version {{ category.version }}</span>
+                            <small class="text-muted ms-2">
+                                <i class="fas fa-clock"></i> {{ category.created_at }}
+                            </small>
+                        </div>
+                        {% if loop.first %}
+                        <span class="badge bg-success">Latest</span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Category Information</h6>
+                            <table class="table table-sm">
+                                <tr>
+                                    <td><strong>Name:</strong></td>
+                                    <td>{{ category.name | render_html }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Slug:</strong></td>
+                                    <td><code>{{ category.slug }}</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Taxonomy:</strong></td>
+                                    <td>{{ category.taxonomy }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Post Count:</strong></td>
+                                    <td>{{ category.count }}</td>
+                                </tr>
+                                {% if category.parent > 0 %}
+                                <tr>
+                                    <td><strong>Parent:</strong></td>
+                                    <td>
+                                        <span class="badge bg-info">Category ID: {{ category.parent }}</span>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Description</h6>
+                            {% if category.description %}
+                            <div class="content-preview">
+                                {{ category.description | render_html }}
+                            </div>
+                            {% else %}
+                            <p class="text-muted"><em>No description available</em></p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    {% if category.link %}
+                    <div class="mt-3">
+                        <a href="{{ category.link }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-external-link-alt"></i> View on WordPress
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- Category Statistics -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-bar"></i> Statistics
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-6">
+                        <h4 class="text-primary">{{ category_versions|length }}</h4>
+                        <p class="text-muted mb-0">Versions</p>
+                    </div>
+                    <div class="col-6">
+                        <h4 class="text-success">{{ category_versions[0].count }}</h4>
+                        <p class="text-muted mb-0">Posts</p>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <h6>Latest Version Details</h6>
+                <ul class="list-unstyled">
+                    <li><strong>Name:</strong> {{ category_versions[0].name | render_html }}</li>
+                    <li><strong>Slug:</strong> {{ category_versions[0].slug }}</li>
+                    <li><strong>Taxonomy:</strong> {{ category_versions[0].taxonomy }}</li>
+                    {% if category_versions[0].parent > 0 %}
+                    <li><strong>Parent:</strong> Category ID {{ category_versions[0].parent }}</li>
+                    {% else %}
+                    <li><strong>Parent:</strong> <span class="text-muted">None (Top-level)</span></li>
+                    {% endif %}
+                    <li><strong>Archived:</strong> {{ category_versions[0].created_at[:10] }}</li>
+                </ul>
+                
+                {% if category_versions[0].description %}
+                <hr>
+                <h6>Description</h6>
+                <p class="small">{{ category_versions[0].description | render_html }}</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-tools"></i> Quick Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('categories') }}" class="btn btn-outline-primary">
+                        <i class="fas fa-arrow-left"></i> Back to Categories
+                    </a>
+                    {% if category_versions[0].link %}
+                    <a href="{{ category_versions[0].link }}" target="_blank" class="btn btn-outline-secondary">
+                        <i class="fas fa-external-link-alt"></i> View Original
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
