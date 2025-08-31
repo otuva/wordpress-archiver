@@ -197,10 +197,17 @@ class WordPressAPI:
         Returns:
             bool: True if it's a WordPress site, False otherwise
         """
+        # Get the base domain without the API path
+        base_domain = self.base_url.replace('/wp-json/wp/v2', '')
+        
         try:
             print(f"   Checking WordPress REST API...")
             # Check if the site has WordPress REST API
-            response = requests.get(f"{self.base_url}/wp-json/", timeout=10)
+            headers = {
+                "Accept": "application/json",
+                "User-Agent": "WordPressAPI/1.0 (Python)"
+            }
+            response = requests.get(f"{base_domain}/wp-json/", headers=headers, timeout=10)
             
             if response.status_code == 200:
                 # Check if it returns WordPress API info
@@ -214,7 +221,7 @@ class WordPressAPI:
             
             print(f"   ⚠️  WordPress REST API not found, checking HTML content...")
             # Alternative check: look for WordPress-specific headers or meta tags
-            response = requests.get(self.base_url, timeout=10)
+            response = requests.get(base_domain, timeout=10)
             if response.status_code == 200:
                 content = response.text.lower()
                 wordpress_indicators = [
@@ -246,21 +253,21 @@ class WordPressAPI:
             
             for endpoint in endpoints_to_check:
                 try:
-                    response = requests.head(f"{self.base_url}{endpoint}", timeout=5)
+                    response = requests.head(f"{base_domain}{endpoint}", timeout=5)
                     if response.status_code in [200, 403, 401]:  # 403/401 means it exists but access denied
                         print(f"   ✅ Found WordPress endpoint: {endpoint}")
                         return True
                 except:
                     continue
             
-            print(f"❌ Error: {self.base_url} does not appear to be a WordPress site")
+            print(f"❌ Error: {base_domain} does not appear to be a WordPress site")
             print("   - No WordPress REST API found")
             print("   - No WordPress indicators found in HTML")
             print("   - No common WordPress endpoints found")
             return False
             
         except requests.exceptions.RequestException as e:
-            print(f"❌ Error: Cannot connect to {self.base_url}")
+            print(f"❌ Error: Cannot connect to {base_domain}")
             print(f"   - Network error: {e}")
             return False
         except Exception as e:
