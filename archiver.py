@@ -278,24 +278,34 @@ class WordPressArchiver:
         """Archive posts from WordPress API."""
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
+        consecutive_empty_pages = 0  # Track consecutive pages with no matching content
         
         # Calculate optimal per_page value based on limit
         per_page = min(100, limit) if limit else 100
         
+        # Convert after_date to ISO format for API if provided
+        after_iso = None
+        if after_date:
+            # WordPress API expects ISO 8601 format with time
+            # If it's just a date, add time to make it start of day
+            if after_date.hour == 0 and after_date.minute == 0 and after_date.second == 0:
+                after_iso = after_date.strftime('%Y-%m-%dT%H:%M:%S')
+            else:
+                after_iso = after_date.isoformat()
+        
         try:
             while True:
-                response = api.get_posts(page=page, per_page=per_page)
+                response = api.get_posts(page=page, per_page=per_page, after=after_iso)
                 
                 if not response.data:
                     break
                 
+                page_has_matching_content = False
+                
                 for post in response.data:
                     try:
-                        # Check if post date is after the filter date
-                        post_date = post.get('date', '')
-                        if not self.is_date_after_filter(post_date, after_date):
-                            continue
-                        
+                        # Since we're using API-level filtering, all posts in response should match
+                        page_has_matching_content = True
                         stats["processed"] += 1
                         
                         # Calculate content hash
@@ -371,6 +381,16 @@ class WordPressArchiver:
                 if limit and stats["processed"] >= limit:
                     break
                 
+                # If no content matched the filter on this page, increment counter
+                if not page_has_matching_content:
+                    consecutive_empty_pages += 1
+                    # If we've gone through 10 consecutive pages with no matching content, stop
+                    if consecutive_empty_pages >= 10:
+                        print(f"  ⚠️  Stopping after {consecutive_empty_pages} consecutive pages with no content matching the date filter")
+                        break
+                else:
+                    consecutive_empty_pages = 0  # Reset counter if we found matching content
+                
                 if page >= response.total_pages_count:
                     break
                 
@@ -386,24 +406,34 @@ class WordPressArchiver:
         """Archive comments from WordPress API."""
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
+        consecutive_empty_pages = 0  # Track consecutive pages with no matching content
         
         # Calculate optimal per_page value based on limit
         per_page = min(100, limit) if limit else 100
         
+        # Convert after_date to ISO format for API if provided
+        after_iso = None
+        if after_date:
+            # WordPress API expects ISO 8601 format with time
+            # If it's just a date, add time to make it start of day
+            if after_date.hour == 0 and after_date.minute == 0 and after_date.second == 0:
+                after_iso = after_date.strftime('%Y-%m-%dT%H:%M:%S')
+            else:
+                after_iso = after_date.isoformat()
+        
         try:
             while True:
-                response = api.get_comments(page=page, per_page=per_page)
+                response = api.get_comments(page=page, per_page=per_page, after=after_iso)
                 
                 if not response.data:
                     break
                 
+                page_has_matching_content = False
+                
                 for comment in response.data:
                     try:
-                        # Check if comment date is after the filter date
-                        comment_date = comment.get('date', '')
-                        if not self.is_date_after_filter(comment_date, after_date):
-                            continue
-                        
+                        # Since we're using API-level filtering, all comments in response should match
+                        page_has_matching_content = True
                         stats["processed"] += 1
                         
                         # Calculate content hash
@@ -481,6 +511,16 @@ class WordPressArchiver:
                 if limit and stats["processed"] >= limit:
                     break
                 
+                # If no content matched the filter on this page, increment counter
+                if not page_has_matching_content:
+                    consecutive_empty_pages += 1
+                    # If we've gone through 10 consecutive pages with no matching content, stop
+                    if consecutive_empty_pages >= 10:
+                        print(f"  ⚠️  Stopping after {consecutive_empty_pages} consecutive pages with no content matching the date filter")
+                        break
+                else:
+                    consecutive_empty_pages = 0  # Reset counter if we found matching content
+                
                 if page >= response.total_pages_count:
                     break
                 
@@ -496,24 +536,34 @@ class WordPressArchiver:
         """Archive pages from WordPress API."""
         stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
         page = 1
+        consecutive_empty_pages = 0  # Track consecutive pages with no matching content
         
         # Calculate optimal per_page value based on limit
         per_page = min(100, limit) if limit else 100
         
+        # Convert after_date to ISO format for API if provided
+        after_iso = None
+        if after_date:
+            # WordPress API expects ISO 8601 format with time
+            # If it's just a date, add time to make it start of day
+            if after_date.hour == 0 and after_date.minute == 0 and after_date.second == 0:
+                after_iso = after_date.strftime('%Y-%m-%dT%H:%M:%S')
+            else:
+                after_iso = after_date.isoformat()
+        
         try:
             while True:
-                response = api.get_pages(page=page, per_page=per_page)
+                response = api.get_pages(page=page, per_page=per_page, after=after_iso)
                 
                 if not response.data:
                     break
                 
+                page_has_matching_content = False
+                
                 for page_data in response.data:
                     try:
-                        # Check if page date is after the filter date
-                        page_date = page_data.get('date', '')
-                        if not self.is_date_after_filter(page_date, after_date):
-                            continue
-                        
+                        # Since we're using API-level filtering, all pages in response should match
+                        page_has_matching_content = True
                         stats["processed"] += 1
                         
                         # Calculate content hash
@@ -588,6 +638,16 @@ class WordPressArchiver:
                 # Check limit again after processing the page
                 if limit and stats["processed"] >= limit:
                     break
+                
+                # If no content matched the filter on this page, increment counter
+                if not page_has_matching_content:
+                    consecutive_empty_pages += 1
+                    # If we've gone through 10 consecutive pages with no matching content, stop
+                    if consecutive_empty_pages >= 10:
+                        print(f"  ⚠️  Stopping after {consecutive_empty_pages} consecutive pages with no content matching the date filter")
+                        break
+                else:
+                    consecutive_empty_pages = 0  # Reset counter if we found matching content
                 
                 if page >= response.total_pages_count:
                     break
