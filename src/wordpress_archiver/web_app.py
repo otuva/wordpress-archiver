@@ -404,18 +404,30 @@ def sessions():
         # Convert sqlite3.Row to dict first
         session_dict = dict(session)
         
-        # Parse errors
+        # Parse errors - check if errors field contains actual error messages
         has_errors = False
         if session_dict.get('errors'):
             try:
                 errors_json = session_dict['errors']
                 if isinstance(errors_json, str):
                     errors_list = json.loads(errors_json)
-                    has_errors = len(errors_list) > 0 and errors_list != []
                 elif isinstance(errors_json, list):
-                    has_errors = len(errors_json) > 0
+                    errors_list = errors_json
+                else:
+                    errors_list = []
+                
+                # Check if any item in the list is an actual error message
+                # Content summaries don't count as errors
+                if isinstance(errors_list, list):
+                    error_indicators = ['error', 'failed', 'exception', 'errors occurred']
+                    has_errors = any(
+                        any(indicator in str(item).lower() for indicator in error_indicators)
+                        for item in errors_list
+                    )
             except (json.JSONDecodeError, TypeError):
-                has_errors = session_dict['errors'] and str(session_dict['errors']) != '[]'
+                # If parsing fails, check if the string contains error indicators
+                errors_str = str(session_dict.get('errors', '')).lower()
+                has_errors = 'error' in errors_str or 'failed' in errors_str
         
         # Parse content type
         parsed_ct = _parse_content_type(session_dict.get('content_type', ''))
@@ -446,18 +458,30 @@ def session_detail(session_id):
     if not session:
         return "Session not found", 404
     
-    # Parse errors JSON
+    # Parse errors JSON - filter to only actual error messages
     errors_data = []
     if session.get('errors'):
         try:
             errors_json = session['errors']
             if isinstance(errors_json, str):
-                errors_data = json.loads(errors_json)
+                errors_list = json.loads(errors_json)
             elif isinstance(errors_json, list):
-                errors_data = errors_json
+                errors_list = errors_json
+            else:
+                errors_list = []
+            
+            # Filter to only actual error messages (not content summaries)
+            error_indicators = ['error', 'failed', 'exception', 'errors occurred']
+            errors_data = [
+                item for item in errors_list
+                if isinstance(item, str) and any(
+                    indicator in item.lower() for indicator in error_indicators
+                )
+            ]
         except (json.JSONDecodeError, TypeError):
-            # If parsing fails, treat as string
-            if session['errors'] and session['errors'] != '[]':
+            # If parsing fails, check if string contains error indicators
+            errors_str = str(session.get('errors', '')).lower()
+            if any(indicator in errors_str for indicator in ['error', 'failed', 'exception']):
                 errors_data = [str(session['errors'])]
     
     # Parse content type to extract info
