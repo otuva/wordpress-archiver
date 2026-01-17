@@ -295,18 +295,29 @@ def categories():
 @app.route('/categories/<int:wp_id>')
 def category_detail(wp_id):
     """
-    Show detailed view of a specific category.
+    Show detailed view of a specific category with posts.
     
     Args:
         wp_id: WordPress category ID
     """
+    page = request.args.get('page', 1, type=int)
+    per_page = app.config['POSTS_PER_PAGE']
+    
     db = get_db_manager()
     category_versions = db.get_content_versions('categories', wp_id)
     
     if not category_versions:
         return "Category not found", 404
     
-    return render_template('category_detail.html', category_versions=category_versions)
+    # Get posts for this category
+    posts, total_posts, total_pages = db.get_posts_by_category(wp_id, page, per_page)
+    
+    return render_template('category_detail.html', 
+                         category_versions=category_versions,
+                         posts=posts,
+                         page=page,
+                         total_pages=total_pages,
+                         total_posts=total_posts)
 
 
 @app.route('/tags')
@@ -336,18 +347,29 @@ def tags():
 @app.route('/tags/<int:wp_id>')
 def tag_detail(wp_id):
     """
-    Show detailed view of a specific tag.
+    Show detailed view of a specific tag with posts.
     
     Args:
         wp_id: WordPress tag ID
     """
+    page = request.args.get('page', 1, type=int)
+    per_page = app.config['POSTS_PER_PAGE']
+    
     db = get_db_manager()
     tag_versions = db.get_content_versions('tags', wp_id)
     
     if not tag_versions:
         return "Tag not found", 404
     
-    return render_template('tag_detail.html', tag_versions=tag_versions)
+    # Get posts for this tag
+    posts, total_posts, total_pages = db.get_posts_by_tag(wp_id, page, per_page)
+    
+    return render_template('tag_detail.html', 
+                         tag_versions=tag_versions,
+                         posts=posts,
+                         page=page,
+                         total_pages=total_pages,
+                         total_posts=total_posts)
 
 
 @app.route('/sessions')

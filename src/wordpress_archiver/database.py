@@ -580,6 +580,100 @@ class DatabaseManager:
             
             return tags
     
+    def get_posts_by_category(self, category_wp_id: int, page: int = 1, per_page: int = 10) -> tuple:
+        """
+        Get posts for a specific category with pagination.
+        
+        Args:
+            category_wp_id: WordPress category ID
+            page: Page number (1-based)
+            per_page: Number of posts per page
+            
+        Returns:
+            Tuple of (posts_list, total_count, total_pages)
+        """
+        offset = (page - 1) * per_page
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get total count of posts with this category
+            cursor.execute('''
+                SELECT COUNT(DISTINCT p.wp_id)
+                FROM posts p
+                INNER JOIN post_categories pc ON p.wp_id = pc.post_wp_id
+                WHERE pc.category_wp_id = ?
+                AND p.version = (
+                    SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
+                )
+            ''', (category_wp_id,))
+            total_posts = cursor.fetchone()[0]
+            
+            # Get posts for current page
+            cursor.execute('''
+                SELECT DISTINCT p.wp_id, p.title, p.excerpt, p.author_id, 
+                       p.date_created, p.date_modified, p.status, p.version, p.created_at
+                FROM posts p
+                INNER JOIN post_categories pc ON p.wp_id = pc.post_wp_id
+                WHERE pc.category_wp_id = ?
+                AND p.version = (
+                    SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
+                )
+                ORDER BY p.date_created DESC
+                LIMIT ? OFFSET ?
+            ''', (category_wp_id, per_page, offset))
+            posts = cursor.fetchall()
+        
+        total_pages = (total_posts + per_page - 1) // per_page
+        return posts, total_posts, total_pages
+    
+    def get_posts_by_tag(self, tag_wp_id: int, page: int = 1, per_page: int = 10) -> tuple:
+        """
+        Get posts for a specific tag with pagination.
+        
+        Args:
+            tag_wp_id: WordPress tag ID
+            page: Page number (1-based)
+            per_page: Number of posts per page
+            
+        Returns:
+            Tuple of (posts_list, total_count, total_pages)
+        """
+        offset = (page - 1) * per_page
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get total count of posts with this tag
+            cursor.execute('''
+                SELECT COUNT(DISTINCT p.wp_id)
+                FROM posts p
+                INNER JOIN post_tags pt ON p.wp_id = pt.post_wp_id
+                WHERE pt.tag_wp_id = ?
+                AND p.version = (
+                    SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
+                )
+            ''', (tag_wp_id,))
+            total_posts = cursor.fetchone()[0]
+            
+            # Get posts for current page
+            cursor.execute('''
+                SELECT DISTINCT p.wp_id, p.title, p.excerpt, p.author_id, 
+                       p.date_created, p.date_modified, p.status, p.version, p.created_at
+                FROM posts p
+                INNER JOIN post_tags pt ON p.wp_id = pt.post_wp_id
+                WHERE pt.tag_wp_id = ?
+                AND p.version = (
+                    SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
+                )
+                ORDER BY p.date_created DESC
+                LIMIT ? OFFSET ?
+            ''', (tag_wp_id, per_page, offset))
+            posts = cursor.fetchall()
+        
+        total_pages = (total_posts + per_page - 1) // per_page
+        return posts, total_posts, total_pages
+    
     # =============================================================================
     # SESSION MANAGEMENT
     # =============================================================================
