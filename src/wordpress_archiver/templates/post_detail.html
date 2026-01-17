@@ -229,9 +229,6 @@
                                     </div>
                                     <div class="d-flex align-items-center gap-2 mt-1">
                                         <span class="badge bg-primary version-badge">v{{ comment.version }}</span>
-                                        <span class="badge bg-{{ 'success' if comment.status == 'approved' else 'warning' }}">
-                                            {{ comment.status }}
-                                        </span>
                                         {% if comment.author_url %}
                                             <a href="{{ comment.author_url }}" target="_blank" class="comment-url">
                                                 <i class="fas fa-external-link-alt"></i>

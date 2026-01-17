@@ -46,9 +46,6 @@
             <div class="card-header d-flex justify-content-between align-items-center">
                 <div class="d-flex align-items-center gap-3">
                     <span class="badge bg-primary version-badge">v{{ comment.version }}</span>
-                    <span class="badge bg-{{ 'success' if comment.status == 'approved' else 'warning' }} fs-6">
-                        {{ comment.status }}
-                    </span>
                     {% if comment.parent_id %}
                         <span class="badge bg-info fs-6">Reply</span>
                     {% endif %}
