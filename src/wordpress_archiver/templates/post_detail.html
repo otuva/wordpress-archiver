@@ -122,7 +122,13 @@
                             <i class="fas fa-user text-primary me-3"></i>
                             <div>
                                 <small class="text-muted d-block">Author</small>
-                                <strong>{{ post_versions[0].author_name or 'Unknown' }}</strong>
+                                {% if post_versions[0].author_id %}
+                                    <a href="{{ url_for('user_detail', wp_id=post_versions[0].author_id) }}" class="text-decoration-none">
+                                        <strong>{{ post_versions[0].author_name or 'Unknown' }}</strong>
+                                    </a>
+                                {% else %}
+                                    <strong>{{ post_versions[0].author_name or 'Unknown' }}</strong>
+                                {% endif %}
                             </div>
                         </div>
                     </div>

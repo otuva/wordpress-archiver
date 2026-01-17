@@ -266,11 +266,14 @@ def users():
 @app.route('/users/<int:wp_id>')
 def user_detail(wp_id):
     """
-    Show detailed view of a specific user.
+    Show detailed view of a specific user with their posts.
     
     Args:
         wp_id: WordPress user ID
     """
+    page = request.args.get('page', 1, type=int)
+    per_page = app.config['POSTS_PER_PAGE']
+    
     db = get_db_manager()
     user_versions = db.get_content_versions('users', wp_id)
     
@@ -291,7 +294,15 @@ def user_detail(wp_id):
                 # If parsing fails, keep as is
                 pass
     
-    return render_template('user_detail.html', user_versions=user_versions)
+    # Get posts by this author
+    posts, total_posts, total_pages = db.get_posts_by_author(wp_id, page, per_page)
+    
+    return render_template('user_detail.html', 
+                         user_versions=user_versions,
+                         posts=posts,
+                         page=page,
+                         total_pages=total_pages,
+                         total_posts=total_posts)
 
 
 @app.route('/categories')

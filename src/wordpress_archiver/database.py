@@ -691,6 +691,55 @@ class DatabaseManager:
         total_pages = (total_posts + per_page - 1) // per_page
         return posts, total_posts, total_pages
     
+    def get_posts_by_author(self, author_id: int, page: int = 1, per_page: int = 10) -> tuple:
+        """
+        Get posts for a specific author with pagination.
+        
+        Args:
+            author_id: WordPress author/user ID
+            page: Page number (1-based)
+            per_page: Number of posts per page
+            
+        Returns:
+            Tuple of (posts_list, total_count, total_pages)
+        """
+        offset = (page - 1) * per_page
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get total count of posts by this author
+            cursor.execute('''
+                SELECT COUNT(*)
+                FROM posts
+                WHERE author_id = ?
+                AND version = (
+                    SELECT MAX(version) FROM posts WHERE wp_id = posts.wp_id
+                )
+            ''', (author_id,))
+            total_posts = cursor.fetchone()[0]
+            
+            # Get posts for current page with author names
+            cursor.execute('''
+                SELECT p.wp_id, p.title, p.excerpt, p.author_id, 
+                       p.date_created, p.date_modified, p.status, p.version, p.created_at,
+                       COALESCE(u.name, 'Unknown') as author_name
+                FROM posts p
+                LEFT JOIN users u ON p.author_id = u.wp_id AND u.version = (
+                    SELECT MAX(version) FROM users WHERE wp_id = u.wp_id
+                )
+                WHERE p.author_id = ?
+                AND p.version = (
+                    SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
+                )
+                ORDER BY p.date_created DESC
+                LIMIT ? OFFSET ?
+            ''', (author_id, per_page, offset))
+            posts = cursor.fetchall()
+        
+        total_pages = (total_posts + per_page - 1) // per_page
+        return posts, total_posts, total_pages
+    
     # =============================================================================
     # SESSION MANAGEMENT
     # =============================================================================
