@@ -167,7 +167,7 @@ def archive_command(args):
                     }
             
             # Save comprehensive session stats
-            archiver.save_comprehensive_session_stats(
+            archiver.save_comprehensive_session(
                 args.domain, content_types, all_stats
             )
             
