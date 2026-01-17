@@ -9,6 +9,7 @@ comments, pages, users, categories, and tags.
 import json
 import os
 import sqlite3
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
@@ -85,6 +86,15 @@ def get_archive_stats() -> Dict[str, Any]:
 
 app.jinja_env.filters['render_html'] = render_html
 app.jinja_env.filters['calculate_indentation'] = calculate_indentation
+
+# =============================================================================
+# CONTEXT PROCESSORS
+# =============================================================================
+
+@app.context_processor
+def inject_current_year():
+    """Inject current year into all templates."""
+    return {'current_year': datetime.now().year}
 
 # =============================================================================
 # ROUTE HANDLERS - MAIN PAGES

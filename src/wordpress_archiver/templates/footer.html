@@ -1,0 +1,73 @@
+<footer class="footer">
+    <div class="container">
+        <div class="row g-4">
+            <!-- Brand Section -->
+            <div class="col-lg-4 col-md-6">
+                <div class="footer-brand">
+                    <h5 class="footer-title">
+                        <i class="fas fa-archive me-2"></i> WordPress Archive Viewer
+                    </h5>
+                    <p class="footer-description">
+                        Browse and explore your archived WordPress content with powerful search and organization tools.
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Quick Links -->
+            <div class="col-lg-2 col-md-6">
+                <h6 class="footer-heading">Content</h6>
+                <ul class="footer-links">
+                    <li><a href="{{ url_for('posts') }}"><i class="fas fa-newspaper me-2"></i>Posts</a></li>
+                    <li><a href="{{ url_for('pages') }}"><i class="fas fa-file-alt me-2"></i>Pages</a></li>
+                    <li><a href="{{ url_for('comments') }}"><i class="fas fa-comments me-2"></i>Comments</a></li>
+                </ul>
+            </div>
+            
+            <!-- Taxonomy Links -->
+            <div class="col-lg-2 col-md-6">
+                <h6 class="footer-heading">Organize</h6>
+                <ul class="footer-links">
+                    <li><a href="{{ url_for('categories') }}"><i class="fas fa-folder me-2"></i>Categories</a></li>
+                    <li><a href="{{ url_for('tags') }}"><i class="fas fa-tags me-2"></i>Tags</a></li>
+                    <li><a href="{{ url_for('users') }}"><i class="fas fa-users me-2"></i>Users</a></li>
+                </ul>
+            </div>
+            
+            <!-- System Links -->
+            <div class="col-lg-2 col-md-6">
+                <h6 class="footer-heading">System</h6>
+                <ul class="footer-links">
+                    <li><a href="{{ url_for('sessions') }}"><i class="fas fa-history me-2"></i>Sessions</a></li>
+                    <li><a href="{{ url_for('index') }}"><i class="fas fa-home me-2"></i>Dashboard</a></li>
+                </ul>
+            </div>
+            
+            <!-- Social/Info -->
+            <div class="col-lg-2 col-md-6">
+                <h6 class="footer-heading">About</h6>
+                <ul class="footer-links">
+                    <li><span class="footer-info"><i class="fas fa-database me-2"></i>Powered by SQLite</span></li>
+                    <li><span class="footer-info"><i class="fas fa-flask me-2"></i>Built with Flask</span></li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Footer Bottom -->
+        <div class="footer-bottom">
+            <hr class="footer-divider">
+            <div class="row align-items-center">
+                <div class="col-md-6 text-center text-md-start">
+                    <small class="footer-copyright">
+                        © {{ current_year }} WordPress Archive Viewer. Built with ❤️ for content preservation.
+                    </small>
+                </div>
+                <div class="col-md-6 text-center text-md-end">
+                    <small class="footer-tech">
+                        <i class="fas fa-code me-1"></i> Open Source Archive Solution
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</footer>
+
