@@ -401,24 +401,26 @@ def sessions():
     # Parse errors and content types for each session
     parsed_sessions = []
     for session in sessions:
+        # Convert sqlite3.Row to dict first
+        session_dict = dict(session)
+        
         # Parse errors
         has_errors = False
-        if session.get('errors'):
+        if session_dict.get('errors'):
             try:
-                errors_json = session['errors']
+                errors_json = session_dict['errors']
                 if isinstance(errors_json, str):
                     errors_list = json.loads(errors_json)
                     has_errors = len(errors_list) > 0 and errors_list != []
                 elif isinstance(errors_json, list):
                     has_errors = len(errors_json) > 0
             except (json.JSONDecodeError, TypeError):
-                has_errors = session['errors'] and str(session['errors']) != '[]'
+                has_errors = session_dict['errors'] and str(session_dict['errors']) != '[]'
         
         # Parse content type
-        parsed_ct = _parse_content_type(session.get('content_type', ''))
+        parsed_ct = _parse_content_type(session_dict.get('content_type', ''))
         
-        # Create session dict with parsed info
-        session_dict = dict(session)
+        # Add parsed info to session dict
         session_dict['has_errors'] = has_errors
         session_dict['parsed_content_type'] = parsed_ct
         parsed_sessions.append(session_dict)
@@ -488,6 +490,17 @@ def _parse_content_type(content_type_str: str) -> Dict[str, Any]:
             domain = parts[0].replace('Archive of ', '').strip()
             types_str = parts[1]
             types_list = [t.strip() for t in types_str.split(',')]
+            
+            # If only one type, treat it as a single type, not comprehensive
+            if len(types_list) == 1:
+                type_name = types_list[0].lower()
+                return {
+                    'type': 'single',
+                    'display': types_list[0].title(),
+                    'types': [type_name]
+                }
+            
+            # Multiple types or empty - this is a complete archive
             return {
                 'type': 'comprehensive',
                 'display': 'Complete Archive',

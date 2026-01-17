@@ -247,17 +247,14 @@
                                             </span>
                                         {% endif %}
                                     {% elif ct['type'] == 'comprehensive' %}
-                                        <span class="badge bg-dark fs-6" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ ct['types']|join(', ') }}">
+                                        <span class="badge bg-dark fs-6" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ ct['types']|join(', ') if ct['types'] else 'All content types' }}">
                                             <i class="fas fa-archive me-1"></i>Complete Archive
-                                            {% if ct['types']|length > 0 %}
-                                                <small>({{ ct['types']|length }} types)</small>
-                                            {% endif %}
                                         </span>
                                     {% elif ct['type'] == 'interrupted' %}
                                         <span class="badge bg-danger fs-6" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ ct['types']|join(', ') if ct['types'] else 'Interrupted' }}">
                                             <i class="fas fa-stop-circle me-1"></i>Interrupted
-                                            {% if ct['types']|length > 0 %}
-                                                <small>({{ ct['types']|length }} types)</small>
+                                            {% if ct['types']|length == 1 %}
+                                                <small>- {{ ct['types'][0]|title }}</small>
                                             {% endif %}
                                         </span>
                                     {% elif ct['type'] == 'failed_verification' %}
