@@ -122,17 +122,35 @@
                 {% if user_versions[0].avatar_urls %}
                 <div class="row mb-3">
                     <div class="col-12">
-                        <strong>Avatar URLs:</strong><br>
-                        <small class="text-muted">{{ user_versions[0].avatar_urls }}</small>
-                    </div>
-                </div>
-                {% endif %}
-                
-                {% if user_versions[0].mpp_avatar %}
-                <div class="row">
-                    <div class="col-12">
-                        <strong>MPP Avatar:</strong><br>
-                        <small class="text-muted">{{ user_versions[0].mpp_avatar }}</small>
+                        <strong>Avatar:</strong><br>
+                        {% set avatar_data = user_versions[0].avatar_urls %}
+                        {% if avatar_data is mapping %}
+                            {% set sizes = avatar_data.keys()|list|sort(reverse=true) %}
+                            {% if sizes|length > 0 %}
+                                {% set largest_size = sizes[0] %}
+                                {% set largest_url = avatar_data[largest_size] %}
+                                <div class="d-flex align-items-center gap-3 mb-2">
+                                    <img src="{{ largest_url }}" alt="Avatar" class="rounded-circle" style="width: 96px; height: 96px; object-fit: cover; border: 2px solid #dee2e6;">
+                                    <div>
+                                        {% for size in sizes %}
+                                            {% if avatar_data[size] %}
+                                                <div class="mb-1">
+                                                    <small><a href="{{ avatar_data[size] }}" target="_blank" rel="noopener" class="text-decoration-none"><strong>{{ size }}px</strong></a></small>
+                                                </div>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            {% else %}
+                                {% for key, url in avatar_data.items() %}
+                                    <div class="mb-1">
+                                        <small><a href="{{ url }}" target="_blank" rel="noopener" class="text-decoration-none"><strong>{{ key }}</strong></a></small>
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                        {% else %}
+                            <small class="text-muted">{{ avatar_data }}</small>
+                        {% endif %}
                     </div>
                 </div>
                 {% endif %}

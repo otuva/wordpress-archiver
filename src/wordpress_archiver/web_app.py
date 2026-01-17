@@ -277,6 +277,20 @@ def user_detail(wp_id):
     if not user_versions:
         return "User not found", 404
     
+    # Parse avatar_urls JSON for each version
+    for user_version in user_versions:
+        avatar_urls = user_version.get('avatar_urls', '')
+        if avatar_urls:
+            try:
+                if isinstance(avatar_urls, str):
+                    user_version['avatar_urls'] = json.loads(avatar_urls)
+                elif isinstance(avatar_urls, dict):
+                    # Already a dict, no parsing needed
+                    pass
+            except (json.JSONDecodeError, TypeError):
+                # If parsing fails, keep as is
+                pass
+    
     return render_template('user_detail.html', user_versions=user_versions)
 
 
