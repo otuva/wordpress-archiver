@@ -216,7 +216,7 @@
             <div class="card-body">
                 <div class="comments-container">
                     {% for comment in comments %}
-                    <div class="comment-item" style="margin-left: {{ comment.level | calculate_indentation }}px;">
+                    <div id="comment-{{ comment.wp_id }}" class="comment-item" style="margin-left: {{ comment.level | calculate_indentation }}px;">
                         <div class="comment-header d-flex justify-content-between align-items-start mb-3">
                             <div class="d-flex align-items-center gap-3">
                                 <div class="comment-author-info">
@@ -270,4 +270,35 @@
 {% endif %}
 {% endblock %}
 
-{% block scripts %}{% endblock %}
+{% block scripts %}
+<style>
+.comment-item {
+    scroll-margin-top: 20px;
+    transition: background-color 0.3s ease-in-out;
+}
+.comment-item.highlight {
+    background-color: #fff3cd;
+    padding: 10px;
+    border-radius: 5px;
+    border-left: 4px solid #ffc107;
+}
+html {
+    scroll-behavior: smooth;
+}
+</style>
+<script>
+// Highlight comment when page loads with anchor
+window.addEventListener('DOMContentLoaded', function() {
+    const hash = window.location.hash;
+    if (hash) {
+        const commentElement = document.querySelector(hash);
+        if (commentElement) {
+            commentElement.classList.add('highlight');
+            setTimeout(function() {
+                commentElement.classList.remove('highlight');
+            }, 2000);
+        }
+    }
+});
+</script>
+{% endblock %}
