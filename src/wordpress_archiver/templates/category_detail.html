@@ -23,11 +23,6 @@
             </h1>
             <div>
                 <span class="badge bg-primary">{{ category_versions|length }} version{{ 's' if category_versions|length != 1 else '' }}</span>
-                {% if category_versions[0].link %}
-                <a href="{{ category_versions[0].link }}" target="_blank" class="btn btn-outline-secondary ms-2">
-                    <i class="fas fa-external-link-alt"></i> View Original
-                </a>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -98,14 +93,6 @@
                             {% endif %}
                         </div>
                     </div>
-                    
-                    {% if category.link %}
-                    <div class="mt-3">
-                        <a href="{{ category.link }}" target="_blank" class="btn btn-sm btn-outline-secondary">
-                            <i class="fas fa-external-link-alt"></i> View on WordPress
-                        </a>
-                    </div>
-                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
@@ -256,11 +243,6 @@
                     <a href="{{ url_for('categories') }}" class="btn btn-outline-primary">
                         <i class="fas fa-arrow-left"></i> Back to Categories
                     </a>
-                    {% if category_versions[0].link %}
-                    <a href="{{ category_versions[0].link }}" target="_blank" class="btn btn-outline-secondary">
-                        <i class="fas fa-external-link-alt"></i> View Original
-                    </a>
-                    {% endif %}
                 </div>
             </div>
         </div>

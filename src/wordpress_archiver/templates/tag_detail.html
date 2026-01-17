@@ -23,11 +23,6 @@
             </h1>
             <div>
                 <span class="badge bg-primary">{{ tag_versions|length }} version{{ 's' if tag_versions|length != 1 else '' }}</span>
-                {% if tag_versions[0].link %}
-                <a href="{{ tag_versions[0].link }}" target="_blank" class="btn btn-outline-secondary ms-2">
-                    <i class="fas fa-external-link-alt"></i> View Original
-                </a>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -90,14 +85,6 @@
                             {% endif %}
                         </div>
                     </div>
-                    
-                    {% if tag.link %}
-                    <div class="mt-3">
-                        <a href="{{ tag.link }}" target="_blank" class="btn btn-sm btn-outline-secondary">
-                            <i class="fas fa-external-link-alt"></i> View on WordPress
-                        </a>
-                    </div>
-                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
@@ -243,11 +230,6 @@
                     <a href="{{ url_for('tags') }}" class="btn btn-outline-primary">
                         <i class="fas fa-arrow-left"></i> Back to Tags
                     </a>
-                    {% if tag_versions[0].link %}
-                    <a href="{{ tag_versions[0].link }}" target="_blank" class="btn btn-outline-secondary">
-                        <i class="fas fa-external-link-alt"></i> View Original
-                    </a>
-                    {% endif %}
                 </div>
             </div>
         </div>
