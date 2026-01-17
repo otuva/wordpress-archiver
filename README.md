@@ -5,12 +5,16 @@ A comprehensive tool for archiving WordPress content locally using SQLite. This 
 ## Features
 
 - **Complete Content Archiving**: Archive posts, comments, pages, users, categories, and tags
+- **Post Relationships**: Automatic tracking of post-category and post-tag relationships
 - **Version Control**: Track content changes with automatic versioning
 - **Change Detection**: Intelligent content hashing to detect and archive only changed content
 - **Web Interface**: Beautiful web interface to browse and search archived content
+- **Author Information**: Display author names instead of IDs
+- **Avatar Rendering**: Visual avatar display with multiple size options
+- **Content Navigation**: Browse posts by category or tag, and view categories/tags for each post
 - **Date Filtering**: Archive content from specific dates onwards
 - **Duplicate Prevention**: Smart handling of duplicate content
-- **Session Tracking**: Track archive sessions with detailed statistics
+- **Session Tracking**: Track archive sessions with detailed statistics and error reporting
 - **SQLite Database**: Lightweight, portable database storage
 
 ## Installation
@@ -91,9 +95,12 @@ The web interface provides:
 
 - **Dashboard**: Overview of archived content statistics
 - **Content Browsing**: Browse posts, comments, pages, users, categories, and tags
+- **Post Relationships**: View and navigate posts by categories and tags
+- **Author Names**: See author names instead of IDs
+- **Avatar Display**: Visual avatar rendering with clickable size options
 - **Search**: Search across all content types
 - **Version History**: View different versions of content
-- **Session History**: Track archive sessions and their results
+- **Session History**: Track archive sessions with accurate content type and error status
 
 Access the web interface at `http://localhost:5000` after starting it.
 
@@ -106,10 +113,12 @@ The tool uses SQLite for data storage. The database file is created automaticall
 - **Posts Table**: WordPress posts with version control
 - **Comments Table**: Comments with post relationships
 - **Pages Table**: WordPress pages with version control
-- **Users Table**: User information and metadata
+- **Users Table**: User information, metadata, and avatar URLs (stored as JSON)
 - **Categories Table**: Category information
 - **Tags Table**: Tag information
-- **Archive Sessions Table**: Session tracking and statistics
+- **Post Categories Table**: Junction table linking posts to categories
+- **Post Tags Table**: Junction table linking posts to tags
+- **Archive Sessions Table**: Session tracking and statistics with error reporting
 
 ### Content Processing
 
@@ -119,6 +128,21 @@ The tool includes intelligent content processing:
 - **Hash-based Change Detection**: Uses SHA-256 hashing for efficient change detection
 - **Version Control**: Automatically creates new versions when content changes
 - **Duplicate Prevention**: Prevents storing identical content multiple times
+
+## Post Relationships
+
+The archiver automatically tracks relationships between posts and their categories/tags:
+
+- **Categories**: Each post can belong to multiple categories
+- **Tags**: Each post can have multiple tags
+- **Navigation**: Browse posts by clicking on categories or tags
+- **Automatic Fetching**: Category and tag details are automatically fetched when encountered in posts
+- **Versioning**: Relationships are versioned along with posts to track changes over time
+
+In the web interface:
+- Click on a category or tag to see all associated posts
+- View categories and tags for each post on the post detail page
+- Navigate seamlessly between posts, categories, and tags
 
 ## Architecture
 
@@ -232,6 +256,15 @@ For issues and questions:
 3. Create a new issue with detailed information
 
 ## Changelog
+
+### Version 1.1.0
+- Added post-category and post-tag relationship tracking
+- Display author names instead of IDs
+- Avatar URL rendering with visual display and clickable size links
+- Improved archive session tracking with accurate content type and error status
+- Enhanced content navigation (browse posts by category/tag)
+- Removed unnecessary status badges for cleaner UI
+- Improved error detection and reporting in sessions
 
 ### Version 1.0.0
 - Initial release
