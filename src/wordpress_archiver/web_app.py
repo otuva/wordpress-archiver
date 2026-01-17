@@ -398,8 +398,33 @@ def sessions():
     db = get_db_manager()
     sessions, total_sessions, total_pages = db.get_paginated_sessions(page, per_page)
     
+    # Parse errors and content types for each session
+    parsed_sessions = []
+    for session in sessions:
+        # Parse errors
+        has_errors = False
+        if session.get('errors'):
+            try:
+                errors_json = session['errors']
+                if isinstance(errors_json, str):
+                    errors_list = json.loads(errors_json)
+                    has_errors = len(errors_list) > 0 and errors_list != []
+                elif isinstance(errors_json, list):
+                    has_errors = len(errors_json) > 0
+            except (json.JSONDecodeError, TypeError):
+                has_errors = session['errors'] and str(session['errors']) != '[]'
+        
+        # Parse content type
+        parsed_ct = _parse_content_type(session.get('content_type', ''))
+        
+        # Create session dict with parsed info
+        session_dict = dict(session)
+        session_dict['has_errors'] = has_errors
+        session_dict['parsed_content_type'] = parsed_ct
+        parsed_sessions.append(session_dict)
+    
     return render_template('sessions.html', 
-                         sessions=sessions, 
+                         sessions=parsed_sessions, 
                          page=page, 
                          total_pages=total_pages,
                          total_sessions=total_sessions)
@@ -419,6 +444,107 @@ def session_detail(session_id):
     if not session:
         return "Session not found", 404
     
-    return render_template('session_detail.html', session=session)
+    # Parse errors JSON
+    errors_data = []
+    if session.get('errors'):
+        try:
+            errors_json = session['errors']
+            if isinstance(errors_json, str):
+                errors_data = json.loads(errors_json)
+            elif isinstance(errors_json, list):
+                errors_data = errors_json
+        except (json.JSONDecodeError, TypeError):
+            # If parsing fails, treat as string
+            if session['errors'] and session['errors'] != '[]':
+                errors_data = [str(session['errors'])]
+    
+    # Parse content type to extract info
+    content_type = session.get('content_type', '')
+    parsed_content_type = _parse_content_type(content_type)
+    
+    return render_template('session_detail.html', 
+                         session=session,
+                         errors_data=errors_data,
+                         parsed_content_type=parsed_content_type)
+
+
+def _parse_content_type(content_type_str: str) -> Dict[str, Any]:
+    """
+    Parse content type string to extract meaningful information.
+    
+    Args:
+        content_type_str: Content type string from database
+        
+    Returns:
+        Dictionary with parsed content type information
+    """
+    if not content_type_str:
+        return {'type': 'unknown', 'display': 'Unknown', 'types': []}
+    
+    # Check for comprehensive archive sessions
+    if 'Archive of' in content_type_str:
+        parts = content_type_str.split(' - ', 1)
+        if len(parts) == 2:
+            domain = parts[0].replace('Archive of ', '').strip()
+            types_str = parts[1]
+            types_list = [t.strip() for t in types_str.split(',')]
+            return {
+                'type': 'comprehensive',
+                'display': 'Complete Archive',
+                'domain': domain,
+                'types': types_list
+            }
+    
+    # Check for interrupted sessions
+    if 'INTERRUPTED' in content_type_str:
+        parts = content_type_str.split(' - ', 1)
+        if len(parts) >= 2:
+            rest = parts[1]
+            if 'Archive of' in rest:
+                archive_parts = rest.split(' - ', 1)
+                if len(archive_parts) == 2:
+                    domain = archive_parts[0].replace('Archive of ', '').strip()
+                    types_str = archive_parts[1]
+                    types_list = [t.strip() for t in types_str.split(',')]
+                    return {
+                        'type': 'interrupted',
+                        'display': 'Interrupted Archive',
+                        'domain': domain,
+                        'types': types_list
+                    }
+        return {
+            'type': 'interrupted',
+            'display': 'Interrupted',
+            'domain': None,
+            'types': []
+        }
+    
+    # Check for failed verification
+    if 'FAILED VERIFICATION' in content_type_str:
+        parts = content_type_str.split(' - ', 2)
+        domain = parts[1] if len(parts) > 1 else None
+        reason = parts[2] if len(parts) > 2 else None
+        return {
+            'type': 'failed_verification',
+            'display': 'Failed Verification',
+            'domain': domain,
+            'reason': reason
+        }
+    
+    # Single content type (normal case)
+    valid_types = ['posts', 'comments', 'pages', 'users', 'categories', 'tags']
+    if content_type_str.lower() in valid_types:
+        return {
+            'type': 'single',
+            'display': content_type_str.title(),
+            'types': [content_type_str.lower()]
+        }
+    
+    # Unknown format
+    return {
+        'type': 'unknown',
+        'display': content_type_str,
+        'types': []
+    }
 
  
