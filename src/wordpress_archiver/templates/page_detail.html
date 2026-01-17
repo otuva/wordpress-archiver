@@ -94,19 +94,9 @@
                     </div>
                 </div>
                 
-                {% if page_versions[0].excerpt %}
-                <div class="row mb-3">
-                    <div class="col-12">
-                        <strong>Excerpt:</strong><br>
-                        <div class="content-html">{{ page_versions[0].excerpt }}</div>
-                    </div>
-                </div>
-                {% endif %}
-                
                 <div class="row">
                     <div class="col-12">
-                        <strong>Content:</strong><br>
-                        <div class="content-html">{{ page_versions[0].content }}</div>
+                        <div class="content-html">{{ page_versions[0].content | render_html }}</div>
                     </div>
                 </div>
             </div>
