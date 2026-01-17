@@ -154,6 +154,18 @@ def post_detail(wp_id):
     categories = db.get_post_categories(wp_id, post_version)
     tags = db.get_post_tags(wp_id, post_version)
     
+    # Get author names for all post versions
+    for post_version_item in post_versions:
+        author_id = post_version_item.get('author_id')
+        if author_id:
+            author_versions = db.get_content_versions('users', author_id)
+            if author_versions:
+                post_version_item['author_name'] = author_versions[0].get('name', 'Unknown')
+            else:
+                post_version_item['author_name'] = 'Unknown'
+        else:
+            post_version_item['author_name'] = 'Unknown'
+    
     return render_template('post_detail.html', 
                          post_versions=post_versions,
                          comments=comments,

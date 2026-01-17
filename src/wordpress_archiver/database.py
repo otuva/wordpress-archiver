@@ -609,12 +609,16 @@ class DatabaseManager:
             ''', (category_wp_id,))
             total_posts = cursor.fetchone()[0]
             
-            # Get posts for current page
+            # Get posts for current page with author names
             cursor.execute('''
                 SELECT DISTINCT p.wp_id, p.title, p.excerpt, p.author_id, 
-                       p.date_created, p.date_modified, p.status, p.version, p.created_at
+                       p.date_created, p.date_modified, p.status, p.version, p.created_at,
+                       COALESCE(u.name, 'Unknown') as author_name
                 FROM posts p
                 INNER JOIN post_categories pc ON p.wp_id = pc.post_wp_id
+                LEFT JOIN users u ON p.author_id = u.wp_id AND u.version = (
+                    SELECT MAX(version) FROM users WHERE wp_id = u.wp_id
+                )
                 WHERE pc.category_wp_id = ?
                 AND p.version = (
                     SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
@@ -656,12 +660,16 @@ class DatabaseManager:
             ''', (tag_wp_id,))
             total_posts = cursor.fetchone()[0]
             
-            # Get posts for current page
+            # Get posts for current page with author names
             cursor.execute('''
                 SELECT DISTINCT p.wp_id, p.title, p.excerpt, p.author_id, 
-                       p.date_created, p.date_modified, p.status, p.version, p.created_at
+                       p.date_created, p.date_modified, p.status, p.version, p.created_at,
+                       COALESCE(u.name, 'Unknown') as author_name
                 FROM posts p
                 INNER JOIN post_tags pt ON p.wp_id = pt.post_wp_id
+                LEFT JOIN users u ON p.author_id = u.wp_id AND u.version = (
+                    SELECT MAX(version) FROM users WHERE wp_id = u.wp_id
+                )
                 WHERE pt.tag_wp_id = ?
                 AND p.version = (
                     SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
@@ -854,20 +862,25 @@ class DatabaseManager:
             where_clause = ""
             params = []
             if search:
-                where_clause = "WHERE title LIKE ? OR content LIKE ?"
+                where_clause = "WHERE p.title LIKE ? OR p.content LIKE ?"
                 params = [f'%{search}%', f'%{search}%']
             
             # Get total count
-            cursor.execute(f"SELECT COUNT(*) FROM posts {where_clause}", params)
+            count_query = f"SELECT COUNT(*) FROM posts p {where_clause}"
+            cursor.execute(count_query, params)
             total_posts = cursor.fetchone()[0]
             
-            # Get posts for current page
+            # Get posts for current page with author names
             query = f"""
-                SELECT wp_id, title, excerpt, author_id, date_created, date_modified, 
-                       status, version, created_at
-                FROM posts 
+                SELECT p.wp_id, p.title, p.excerpt, p.author_id, 
+                       p.date_created, p.date_modified, p.status, p.version, p.created_at,
+                       COALESCE(u.name, 'Unknown') as author_name
+                FROM posts p
+                LEFT JOIN users u ON p.author_id = u.wp_id AND u.version = (
+                    SELECT MAX(version) FROM users WHERE wp_id = u.wp_id
+                )
                 {where_clause}
-                ORDER BY date_created DESC
+                ORDER BY p.date_created DESC
                 LIMIT ? OFFSET ?
             """
             cursor.execute(query, params + [per_page, offset])
