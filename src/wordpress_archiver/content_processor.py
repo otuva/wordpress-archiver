@@ -160,7 +160,9 @@ class ContentProcessor:
                 'date_created': wp_item.get('date', ''),
                 'date_modified': wp_item.get('modified', ''),
                 'status': wp_item.get('status', ''),
-                'content_hash': self.calculate_content_hash(wp_item.get('content', {}).get('rendered', ''))
+                'content_hash': self.calculate_content_hash(wp_item.get('content', {}).get('rendered', '')),
+                'categories': wp_item.get('categories', []),
+                'tags': wp_item.get('tags', [])
             }
         elif content_type == 'comments':
             return {

@@ -156,10 +156,45 @@
                             </div>
                         </div>
                     </div>
+                    {% if categories %}
+                    <div class="col-12">
+                        <div class="d-flex align-items-start">
+                            <i class="fas fa-folder text-primary me-3 mt-1"></i>
+                            <div class="flex-grow-1">
+                                <small class="text-muted d-block mb-2">Categories</small>
+                                <div class="d-flex flex-wrap gap-2">
+                                    {% for category in categories %}
+                                    <a href="{{ url_for('category_detail', wp_id=category.wp_id) }}" 
+                                       class="badge bg-primary text-decoration-none">
+                                        {{ category.name }}
+                                    </a>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if tags %}
+                    <div class="col-12">
+                        <div class="d-flex align-items-start">
+                            <i class="fas fa-tags text-success me-3 mt-1"></i>
+                            <div class="flex-grow-1">
+                                <small class="text-muted d-block mb-2">Tags</small>
+                                <div class="d-flex flex-wrap gap-2">
+                                    {% for tag in tags %}
+                                    <a href="{{ url_for('tag_detail', wp_id=tag.wp_id) }}" 
+                                       class="badge bg-success text-decoration-none">
+                                        {{ tag.name }}
+                                    </a>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
-
 
     </div>
 </div>

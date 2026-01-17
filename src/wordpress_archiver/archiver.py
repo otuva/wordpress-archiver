@@ -69,7 +69,7 @@ class WordPressArchiver:
                         stats["processed"] += 1
                         
                         # Process the item
-                        self._process_content_item(content_type, item, stats)
+                        self._process_content_item(content_type, item, stats, api)
                         
                         # Check limit
                         if limit and stats["processed"] >= limit:
@@ -122,7 +122,7 @@ class WordPressArchiver:
         else:
             raise ValueError(f"Unsupported content type: {content_type}")
     
-    def _process_content_item(self, content_type: str, item: Dict[str, Any], stats: Dict[str, int]):
+    def _process_content_item(self, content_type: str, item: Dict[str, Any], stats: Dict[str, int], api: Optional[WordPressAPI] = None):
         """Process a single content item."""
         # Extract and normalize content data
         content_data = self.content_processor.extract_content_data(item, content_type)
@@ -143,6 +143,44 @@ class WordPressArchiver:
             self.db.insert_content(content_type, content_data, version=new_version)
             stats["updated"] += 1
             logger.info(f"Updated {content_type}: {self._get_item_title(content_data, content_type)}")
+        
+        # If processing a post, fetch and save category/tag details
+        if content_type == 'posts' and api:
+            self._process_post_taxonomies(content_data, api)
+    
+    def _process_post_taxonomies(self, post_data: Dict[str, Any], api: WordPressAPI):
+        """
+        Fetch and save category and tag details for a post.
+        
+        Args:
+            post_data: Post data dictionary containing category/tag IDs
+            api: WordPress API instance
+        """
+        # Process categories
+        category_ids = post_data.get('categories', [])
+        for category_id in category_ids:
+            if not self.db.content_exists('categories', category_id):
+                try:
+                    response = api.get_category(category_id)
+                    if response.data:
+                        category_data = self.content_processor.extract_content_data(response.data, 'categories')
+                        self.db.insert_content('categories', category_data, version=1)
+                        logger.debug(f"Saved category: {category_data.get('name', category_id)}")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch category {category_id}: {e}")
+        
+        # Process tags
+        tag_ids = post_data.get('tags', [])
+        for tag_id in tag_ids:
+            if not self.db.content_exists('tags', tag_id):
+                try:
+                    response = api.get_tag(tag_id)
+                    if response.data:
+                        tag_data = self.content_processor.extract_content_data(response.data, 'tags')
+                        self.db.insert_content('tags', tag_data, version=1)
+                        logger.debug(f"Saved tag: {tag_data.get('name', tag_id)}")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch tag {tag_id}: {e}")
     
     def _get_item_title(self, content_data: Dict[str, Any], content_type: str) -> str:
         """Get a human-readable title for the content item."""

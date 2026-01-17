@@ -141,6 +141,30 @@ SESSIONS_TABLE_SCHEMA = '''
     )
 '''
 
+POST_CATEGORIES_TABLE_SCHEMA = '''
+    CREATE TABLE IF NOT EXISTS post_categories (
+        id INTEGER PRIMARY KEY,
+        post_wp_id INTEGER,
+        category_wp_id INTEGER,
+        version INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(post_wp_id, category_wp_id, version),
+        FOREIGN KEY (post_wp_id) REFERENCES posts (wp_id)
+    )
+'''
+
+POST_TAGS_TABLE_SCHEMA = '''
+    CREATE TABLE IF NOT EXISTS post_tags (
+        id INTEGER PRIMARY KEY,
+        post_wp_id INTEGER,
+        tag_wp_id INTEGER,
+        version INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(post_wp_id, tag_wp_id, version),
+        FOREIGN KEY (post_wp_id) REFERENCES posts (wp_id)
+    )
+'''
+
 # =============================================================================
 # DATABASE INDEXES
 # =============================================================================
@@ -158,6 +182,10 @@ DATABASE_INDEXES = [
     ("idx_categories_wp_id", "categories", "wp_id"),
     ("idx_tags_wp_id", "tags", "wp_id"),
     ("idx_sessions_date", "archive_sessions", "session_date"),
+    ("idx_post_categories_post", "post_categories", "post_wp_id"),
+    ("idx_post_categories_category", "post_categories", "category_wp_id"),
+    ("idx_post_tags_post", "post_tags", "post_wp_id"),
+    ("idx_post_tags_tag", "post_tags", "tag_wp_id"),
 ]
 
 # =============================================================================
@@ -227,6 +255,8 @@ class DatabaseManager:
             CATEGORIES_TABLE_SCHEMA,
             TAGS_TABLE_SCHEMA,
             SESSIONS_TABLE_SCHEMA,
+            POST_CATEGORIES_TABLE_SCHEMA,
+            POST_TAGS_TABLE_SCHEMA,
         ]
         
         for schema in schemas:
@@ -303,6 +333,28 @@ class DatabaseManager:
             """, (wp_id,))
             return [dict(row) for row in cursor.fetchall()]
     
+    def get_latest_version(self, content_type: str, wp_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get the latest version of a specific content item.
+        
+        Args:
+            content_type: Type of content (posts, comments, pages, etc.)
+            wp_id: WordPress ID of the content
+            
+        Returns:
+            Latest version as dictionary or None if not found
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"""
+                SELECT * FROM {content_type} 
+                WHERE wp_id = ? 
+                ORDER BY version DESC 
+                LIMIT 1
+            """, (wp_id,))
+            result = cursor.fetchone()
+            return dict(result) if result else None
+    
     def insert_content(self, content_type: str, data: Dict[str, Any], version: int = 1):
         """
         Insert new content into the database.
@@ -326,6 +378,34 @@ class DatabaseManager:
                     data['author_id'], data['date_created'], data['date_modified'],
                     data['status'], data['content_hash'], version
                 ))
+                
+                # Save post-category relationships
+                category_ids = data.get('categories', [])
+                if category_ids:
+                    for category_id in category_ids:
+                        try:
+                            cursor.execute('''
+                                INSERT OR IGNORE INTO post_categories 
+                                (post_wp_id, category_wp_id, version)
+                                VALUES (?, ?, ?)
+                            ''', (data['wp_id'], category_id, version))
+                        except sqlite3.IntegrityError:
+                            # Relationship already exists for this version
+                            pass
+                
+                # Save post-tag relationships
+                tag_ids = data.get('tags', [])
+                if tag_ids:
+                    for tag_id in tag_ids:
+                        try:
+                            cursor.execute('''
+                                INSERT OR IGNORE INTO post_tags 
+                                (post_wp_id, tag_wp_id, version)
+                                VALUES (?, ?, ?)
+                            ''', (data['wp_id'], tag_id, version))
+                        except sqlite3.IntegrityError:
+                            # Relationship already exists for this version
+                            pass
             elif content_type == 'comments':
                 cursor.execute('''
                     INSERT INTO comments 
@@ -384,6 +464,121 @@ class DatabaseManager:
                 ))
             
             conn.commit()
+    
+    # =============================================================================
+    # POST RELATIONSHIPS (CATEGORIES AND TAGS)
+    # =============================================================================
+    
+    def get_post_categories(self, post_wp_id: int, version: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Get categories for a specific post.
+        
+        Args:
+            post_wp_id: WordPress post ID
+            version: Specific version (if None, gets latest version)
+            
+        Returns:
+            List of category dictionaries
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            if version is None:
+                # Get latest version of post
+                latest_post = self.get_latest_version('posts', post_wp_id)
+                if not latest_post:
+                    return []
+                version = latest_post['version']
+            
+            # Get category IDs for this post version
+            cursor.execute('''
+                SELECT category_wp_id 
+                FROM post_categories 
+                WHERE post_wp_id = ? AND version = ?
+            ''', (post_wp_id, version))
+            category_ids = [row[0] for row in cursor.fetchall()]
+            
+            if not category_ids:
+                return []
+            
+            # Get category details
+            placeholders = ','.join(['?'] * len(category_ids))
+            cursor.execute(f'''
+                SELECT wp_id, name, description, link, slug, taxonomy, parent, count
+                FROM categories
+                WHERE wp_id IN ({placeholders})
+                ORDER BY name ASC
+            ''', category_ids)
+            
+            categories = []
+            for row in cursor.fetchall():
+                categories.append({
+                    'wp_id': row[0],
+                    'name': row[1],
+                    'description': row[2],
+                    'link': row[3],
+                    'slug': row[4],
+                    'taxonomy': row[5],
+                    'parent': row[6],
+                    'count': row[7]
+                })
+            
+            return categories
+    
+    def get_post_tags(self, post_wp_id: int, version: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Get tags for a specific post.
+        
+        Args:
+            post_wp_id: WordPress post ID
+            version: Specific version (if None, gets latest version)
+            
+        Returns:
+            List of tag dictionaries
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            if version is None:
+                # Get latest version of post
+                latest_post = self.get_latest_version('posts', post_wp_id)
+                if not latest_post:
+                    return []
+                version = latest_post['version']
+            
+            # Get tag IDs for this post version
+            cursor.execute('''
+                SELECT tag_wp_id 
+                FROM post_tags 
+                WHERE post_wp_id = ? AND version = ?
+            ''', (post_wp_id, version))
+            tag_ids = [row[0] for row in cursor.fetchall()]
+            
+            if not tag_ids:
+                return []
+            
+            # Get tag details
+            placeholders = ','.join(['?'] * len(tag_ids))
+            cursor.execute(f'''
+                SELECT wp_id, name, description, link, slug, taxonomy, count
+                FROM tags
+                WHERE wp_id IN ({placeholders})
+                ORDER BY name ASC
+            ''', tag_ids)
+            
+            tags = []
+            for row in cursor.fetchall():
+                tags.append({
+                    'wp_id': row[0],
+                    'name': row[1],
+                    'description': row[2],
+                    'link': row[3],
+                    'slug': row[4],
+                    'taxonomy': row[5],
+                    'count': row[6]
+                })
+            
+            return tags
     
     # =============================================================================
     # SESSION MANAGEMENT

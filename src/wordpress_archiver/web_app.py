@@ -149,9 +149,16 @@ def post_detail(wp_id):
     # Get comments for this post
     comments = db.get_post_comments(wp_id)
     
+    # Get categories and tags for the post (use selected version or latest)
+    post_version = version if version else (post_versions[0]['version'] if post_versions else None)
+    categories = db.get_post_categories(wp_id, post_version)
+    tags = db.get_post_tags(wp_id, post_version)
+    
     return render_template('post_detail.html', 
                          post_versions=post_versions,
                          comments=comments,
+                         categories=categories,
+                         tags=tags,
                          selected_version=version)
 
 
