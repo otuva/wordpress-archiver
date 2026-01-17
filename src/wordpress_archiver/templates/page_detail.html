@@ -66,15 +66,9 @@
             </div>
             <div class="card-body">
                 <div class="row mb-3">
-                    <div class="col-md-6">
+                    <div class="col-md-12">
                         <strong>Title:</strong><br>
                         {{ page_versions[0].title or 'Untitled' }}
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Status:</strong><br>
-                        <span class="badge bg-{{ 'success' if page_versions[0].status == 'publish' else 'warning' }}">
-                            {{ page_versions[0].status }}
-                        </span>
                     </div>
                 </div>
                 

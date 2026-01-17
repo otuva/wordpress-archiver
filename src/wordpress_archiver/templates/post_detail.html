@@ -32,9 +32,6 @@
                 </h1>
                 <div class="d-flex align-items-center gap-3">
                     <span class="badge bg-primary fs-6">ID: {{ post_versions[0].wp_id }}</span>
-                    <span class="badge bg-{{ 'success' if post_versions[0].status == 'publish' else 'warning' }} fs-6">
-                        {{ post_versions[0].status }}
-                    </span>
                     <span class="badge bg-info fs-6">v{{ post_versions[0].version }}</span>
                 </div>
             </div>
