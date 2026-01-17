@@ -430,6 +430,15 @@ class DatabaseManager:
                     data['status'], data['content_hash'], version
                 ))
             elif content_type == 'users':
+                # Convert dict fields to JSON strings for SQLite
+                avatar_urls = data.get('avatar_urls', '')
+                if isinstance(avatar_urls, dict):
+                    avatar_urls = json.dumps(avatar_urls)
+                
+                mpp_avatar = data.get('mpp_avatar', '')
+                if isinstance(mpp_avatar, dict):
+                    mpp_avatar = json.dumps(mpp_avatar)
+                
                 cursor.execute('''
                     INSERT INTO users 
                     (wp_id, name, url, description, link, slug, avatar_urls, 
@@ -437,8 +446,8 @@ class DatabaseManager:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['name'], data['url'], data['description'],
-                    data['link'], data['slug'], data['avatar_urls'],
-                    data['mpp_avatar'], data['content_hash'], version
+                    data['link'], data['slug'], avatar_urls,
+                    mpp_avatar, data['content_hash'], version
                 ))
             elif content_type == 'categories':
                 cursor.execute('''
