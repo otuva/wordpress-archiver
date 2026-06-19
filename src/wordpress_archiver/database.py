@@ -1559,54 +1559,30 @@ class DatabaseManager:
         Returns:
             Tuple of (query_string, query_parameters)
         """
-        if search:
-            # Use recursive CTE for search queries
-            query = """
-                WITH RECURSIVE comment_tree AS (
-                    SELECT 
-                        c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
-                        c.date_created, c.status, c.version, c.parent_id, 
-                        p.title as post_title, COALESCE(c.post_id, p.wp_id) as post_id,
-                        0 as level,
-                        c.date_created as sort_order
-                    FROM comments c
-                    LEFT JOIN posts p ON c.post_id = p.wp_id
-                        AND (p.wp_id, p.version) IN (SELECT wp_id, MAX(version) FROM posts GROUP BY wp_id)
-                    WHERE (c.parent_id = 0 OR c.parent_id IS NULL)
-                    AND (c.wp_id, c.version) IN (SELECT wp_id, MAX(version) FROM comments GROUP BY wp_id)
-                    AND (c.author_name LIKE ? OR c.content LIKE ?)
-                    
-                    UNION ALL
-                    
-                    SELECT 
-                        c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
-                        c.date_created, c.status, c.version, c.parent_id, 
-                        p.title as post_title, COALESCE(c.post_id, p.wp_id) as post_id,
-                        ct.level + 1,
-                        c.date_created as sort_order
-                    FROM comments c
-                    LEFT JOIN posts p ON c.post_id = p.wp_id
-                        AND (p.wp_id, p.version) IN (SELECT wp_id, MAX(version) FROM posts GROUP BY wp_id)
-                    JOIN comment_tree ct ON c.parent_id = ct.wp_id
-                    WHERE (c.wp_id, c.version) IN (SELECT wp_id, MAX(version) FROM comments GROUP BY wp_id)
-                    AND (c.author_name LIKE ? OR c.content LIKE ?)
-                )
-                SELECT * FROM comment_tree
-                ORDER BY sort_order DESC, level ASC
-                LIMIT ? OFFSET ?
-            """
-            query_params = [f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%', per_page, offset]
-        else:
-            # Use simple query for better performance
-            query = """
-                SELECT 
-                    c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
-                    c.date_created, c.status, c.version, c.parent_id, 
+        # Flat, paginated query for both modes. Search results span many posts, so
+        # a threaded view isn't meaningful — and the old recursive CTE walked the
+        # entire comment forest, which hung on large archives for a broad term
+        # (e.g. ?search=a over 100k+ comments). Levels are computed per page in
+        # _process_comments / _calculate_comment_levels instead.
+        base = """
+                SELECT
+                    c.wp_id, c.author_name, c.author_email, c.author_url, c.content,
+                    c.date_created, c.status, c.version, c.parent_id,
                     p.title as post_title, COALESCE(c.post_id, p.wp_id) as post_id
                 FROM comments c
                 LEFT JOIN posts p ON c.post_id = p.wp_id
                     AND (p.wp_id, p.version) IN (SELECT wp_id, MAX(version) FROM posts GROUP BY wp_id)
                 WHERE (c.wp_id, c.version) IN (SELECT wp_id, MAX(version) FROM comments GROUP BY wp_id)
+        """
+        if search:
+            query = base + """
+                AND (c.author_name LIKE ? OR c.content LIKE ?)
+                ORDER BY c.date_created DESC
+                LIMIT ? OFFSET ?
+            """
+            query_params = [f'%{search}%', f'%{search}%', per_page, offset]
+        else:
+            query = base + """
                 ORDER BY c.date_created DESC
                 LIMIT ? OFFSET ?
             """
@@ -1628,7 +1604,7 @@ class DatabaseManager:
         comments = []
         for comment in paginated_comments:
             parent_id = comment[8] if comment[8] != 0 else None
-            row = {
+            comments.append({
                 'wp_id': comment[0],
                 'author_name': comment[1],
                 'author_email': comment[2],
@@ -1640,17 +1616,11 @@ class DatabaseManager:
                 'parent_id': parent_id,
                 'post_title': comment[9],
                 'post_id': comment[10]
-            }
-            # The search query's recursive CTE returns the nesting level as an
-            # extra column; capture it from the raw tuple here (after the dict is
-            # built, `comment` is no longer indexable by position).
-            if search and len(comment) > 11:
-                row['level'] = comment[11]
-            comments.append(row)
+            })
 
-        # Non-search query has no level column; compute it from the parent chain.
-        if not search:
-            self._calculate_comment_levels(comments)
+        # Both modes return a flat page; derive each comment's indent level from
+        # the parent chain present within the page (cycle-guarded).
+        self._calculate_comment_levels(comments)
 
         return comments
     
