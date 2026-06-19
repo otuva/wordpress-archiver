@@ -695,6 +695,8 @@ class DatabaseManager:
             return [dict(row) for row in cursor.fetchall()]
 
     def get_paginated_api_objects(self, endpoint: str, page: int, per_page: int) -> tuple:
+        page = max(1, page)
+        per_page = max(1, per_page)   # guard against divide-by-zero
         offset = (page - 1) * per_page
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -1536,11 +1538,10 @@ class DatabaseManager:
                     'replies': []
                 })
             
-            # Build comment hierarchy
-            comment_tree = self._build_comment_tree(comment_dicts)
-            
-            # Flatten the tree for display
-            return self._flatten_comment_tree(comment_tree)
+            # Thread the comments for display. Lossless: every archived comment
+            # is emitted exactly once, even if its parent is missing from this
+            # set (orphaned by version filtering / deletion) or forms a cycle.
+            return self._thread_comments(comment_dicts)
     
     # =============================================================================
     # PRIVATE HELPER METHODS
@@ -1565,7 +1566,7 @@ class DatabaseManager:
                     SELECT 
                         c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
                         c.date_created, c.status, c.version, c.parent_id, 
-                        p.title as post_title, p.wp_id as post_id,
+                        p.title as post_title, COALESCE(c.post_id, p.wp_id) as post_id,
                         0 as level,
                         c.date_created as sort_order
                     FROM comments c
@@ -1580,7 +1581,7 @@ class DatabaseManager:
                     SELECT 
                         c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
                         c.date_created, c.status, c.version, c.parent_id, 
-                        p.title as post_title, p.wp_id as post_id,
+                        p.title as post_title, COALESCE(c.post_id, p.wp_id) as post_id,
                         ct.level + 1,
                         c.date_created as sort_order
                     FROM comments c
@@ -1601,7 +1602,7 @@ class DatabaseManager:
                 SELECT 
                     c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
                     c.date_created, c.status, c.version, c.parent_id, 
-                    p.title as post_title, p.wp_id as post_id
+                    p.title as post_title, COALESCE(c.post_id, p.wp_id) as post_id
                 FROM comments c
                 LEFT JOIN posts p ON c.post_id = p.wp_id
                     AND (p.wp_id, p.version) IN (SELECT wp_id, MAX(version) FROM posts GROUP BY wp_id)
@@ -1627,7 +1628,7 @@ class DatabaseManager:
         comments = []
         for comment in paginated_comments:
             parent_id = comment[8] if comment[8] != 0 else None
-            comments.append({
+            row = {
                 'wp_id': comment[0],
                 'author_name': comment[1],
                 'author_email': comment[2],
@@ -1639,54 +1640,70 @@ class DatabaseManager:
                 'parent_id': parent_id,
                 'post_title': comment[9],
                 'post_id': comment[10]
-            })
-        
-        # Calculate levels efficiently for non-search queries
+            }
+            # The search query's recursive CTE returns the nesting level as an
+            # extra column; capture it from the raw tuple here (after the dict is
+            # built, `comment` is no longer indexable by position).
+            if search and len(comment) > 11:
+                row['level'] = comment[11]
+            comments.append(row)
+
+        # Non-search query has no level column; compute it from the parent chain.
         if not search:
             self._calculate_comment_levels(comments)
-        else:
-            # For search queries, use the level from recursive CTE
-            for comment in comments:
-                comment['level'] = comment[11] if len(comment) > 11 else 0
-        
+
         return comments
     
-    def _build_comment_tree(self, comments: List[Dict], parent_id: Optional[int] = None) -> List[Dict]:
+    def _thread_comments(self, comments: List[Dict]) -> List[Dict]:
         """
-        Build a hierarchical comment tree.
-        
+        Order threaded comments for display without losing any.
+
+        Every input comment is emitted exactly once. A comment whose parent_id
+        is absent from this set (orphaned by version filtering or deletion of the
+        parent), self-referential, or part of a cycle is shown as a top-level
+        root instead of being silently dropped. Uses an explicit stack so deeply
+        nested threads can't hit Python's recursion limit. Stored data is never
+        mutated — only the in-memory display order/level.
+
         Args:
-            comments: List of comment dictionaries
-            parent_id: Parent comment ID to filter by
-            
+            comments: Comment dicts (each with a mutable 'replies' list), date-asc
+
         Returns:
-            Hierarchical comment tree
+            Flattened list of comments with a 'level' set for indentation
         """
-        tree = []
-        for comment in comments:
-            if comment['parent_id'] == parent_id:
-                comment['replies'] = self._build_comment_tree(comments, comment['wp_id'])
-                tree.append(comment)
-        return tree
-    
-    def _flatten_comment_tree(self, tree: List[Dict], level: int = 0) -> List[Dict]:
-        """
-        Flatten a comment tree for display (depth-first traversal).
-        
-        Args:
-            tree: Comment tree to flatten
-            level: Current nesting level
-            
-        Returns:
-            Flattened list of comments with levels
-        """
-        flattened = []
-        for comment in tree:
-            comment['level'] = level
-            flattened.append(comment)
-            if comment['replies']:
-                flattened.extend(self._flatten_comment_tree(comment['replies'], level + 1))
-        return flattened
+        by_id = {c['wp_id']: c for c in comments}
+        roots: List[Dict] = []
+        for c in comments:
+            pid = c['parent_id']
+            parent = by_id.get(pid) if pid else None
+            if parent is None or parent is c:
+                # No parent, missing parent (orphan), or self-reference -> root.
+                roots.append(c)
+            else:
+                parent['replies'].append(c)
+
+        ordered: List[Dict] = []
+        visited = set()
+
+        def _emit(seeds: List[Dict]):
+            # Iterative pre-order DFS; reversed() keeps original (date-asc) order.
+            stack = [(node, 0) for node in reversed(seeds)]
+            while stack:
+                node, level = stack.pop()
+                if node['wp_id'] in visited:   # break any parent cycle
+                    continue
+                visited.add(node['wp_id'])
+                node['level'] = level
+                ordered.append(node)
+                for child in reversed(node['replies']):
+                    stack.append((child, level + 1))
+
+        _emit(roots)
+        # Safety net: comments trapped in a pure cycle have no reachable root.
+        for c in comments:
+            if c['wp_id'] not in visited:
+                _emit([c])
+        return ordered
     
     def _calculate_comment_levels(self, comments: List[Dict[str, Any]]):
         """
@@ -1698,8 +1715,10 @@ class DatabaseManager:
         comment_dict = {c['wp_id']: c for c in comments}
         for comment in comments:
             level = 0
+            seen = {comment['wp_id']}   # guard against parent cycles
             current_parent = comment['parent_id']
-            while current_parent and current_parent in comment_dict:
+            while current_parent and current_parent in comment_dict and current_parent not in seen:
                 level += 1
+                seen.add(current_parent)
                 current_parent = comment_dict[current_parent]['parent_id']
             comment['level'] = level 

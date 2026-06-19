@@ -59,7 +59,8 @@ The tool provides a unified command-line interface with three main commands:
 # Archive all content from a WordPress site
 python main.py archive https://example.com
 
-# Archive only posts with a limit
+# Quick preview run: --limit bounds EVERY phase — content items per type,
+# media downloads, and objects per REST route (omit it for a full archive)
 python main.py archive https://example.com --content-type posts --limit 50
 
 # Archive content after a specific date
@@ -122,15 +123,24 @@ python main.py stats --db my_archive.db
 #### Start Web Interface
 
 ```bash
-# Start web interface
+# Start web interface (binds 127.0.0.1 — local machine only, by default)
 python main.py web
 
 # Start on custom port
 python main.py web --port 8080
 
+# Expose on your LAN (see warning below)
+python main.py web --host 0.0.0.0
+
 # Start with debug mode
 python main.py web --debug
 ```
+
+> **Security:** the viewer binds `127.0.0.1` by default so the archive is
+> reachable only from the local machine. It serves **all** archived content
+> verbatim — including private/draft posts and user emails captured with
+> `--auth` — and has no authentication of its own. Only pass `--host 0.0.0.0`
+> (or any non-loopback address) on a network you trust.
 
 ### Web Interface
 

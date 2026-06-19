@@ -226,12 +226,14 @@ class WordPressArchiver:
     # MEDIA (binary assets -> BLOBs in the DB)
     # =========================================================================
 
-    def _scan_content_for_urls(self, api: Optional[WordPressAPI] = None) -> set:
+    def _scan_content_for_urls(self, api: Optional[WordPressAPI] = None,
+                               limit: Optional[int] = None) -> set:
         """Collect every archivable asset URL referenced anywhere in the archive.
 
         Scans ALL versions of every content row (old versions reference assets
         too), user avatars, and — when an API client is given — the authoritative
-        /wp/v2/media attachment list.
+        /wp/v2/media attachment list. ``limit`` bounds the /wp/v2/media walk for
+        quick preview runs (the local content/avatar scan is always full).
         """
         site_url = self.db.get_meta('site_url') or (api.domain if api else None)
         urls: set = set()
@@ -276,12 +278,17 @@ class WordPressArchiver:
                                 urls.add(norm)
 
         if api:
-            urls |= self._scan_media_endpoint(api, site_url)
+            urls |= self._scan_media_endpoint(api, site_url, limit=limit)
 
         return urls
 
-    def _scan_media_endpoint(self, api: WordPressAPI, site_url: Optional[str]) -> set:
-        """Enumerate the /wp/v2/media attachment list (originals + thumbnail sizes)."""
+    def _scan_media_endpoint(self, api: WordPressAPI, site_url: Optional[str],
+                             limit: Optional[int] = None) -> set:
+        """Enumerate the /wp/v2/media attachment list (originals + thumbnail sizes).
+
+        ``limit`` stops the pagination early once enough candidates are gathered,
+        so a ``--limit`` preview run doesn't walk a site's entire media library.
+        """
         urls: set = set()
         page = 1
         try:
@@ -302,6 +309,8 @@ class WordPressArchiver:
                             norm = normalize_asset_url(size_url, site_url)
                             if norm and is_archivable_asset(norm):
                                 urls.add(norm)
+                if limit and len(urls) >= limit:
+                    break
                 if page >= response.total_pages_count:
                     break
                 page += 1
@@ -309,18 +318,28 @@ class WordPressArchiver:
             logger.warning(f"Could not enumerate /media endpoint: {e}")
         return urls
 
-    def archive_media(self, api: WordPressAPI, max_size_bytes: int = 50 * 1024 * 1024) -> Dict[str, int]:
-        """Download every referenced binary asset into the media BLOB store.
+    def archive_media(self, api: WordPressAPI, max_size_bytes: int = 50 * 1024 * 1024,
+                      limit: Optional[int] = None) -> Dict[str, int]:
+        """Download referenced binary assets into the media BLOB store.
 
         Incremental: URLs already present are skipped. Failures and oversized
         files are recorded (not raised) so a single bad asset never aborts a run.
+        ``limit`` caps the number of NEW assets downloaded (and the media-list
+        walk) so a preview run stays small; a full run (limit=None) gets all.
         """
         stats = _new_stats(discovered=0, downloaded=0, skipped=0, oversized=0)
-        all_urls = self._scan_content_for_urls(api)
+        all_urls = self._scan_content_for_urls(api, limit=limit)
         stats["discovered"] = len(all_urls)
         known = self.db.media_url_hashes()
 
+        # Count against a deterministic slice of the discovered URLs (sorted), so a
+        # repeated `--limit N` run converges on the same ~N assets instead of
+        # fetching a fresh N each time. A full run (limit=None) takes everything.
+        considered = 0
         for url in sorted(all_urls):
+            if limit and considered >= limit:
+                break
+            considered += 1
             h = url_hash(url)
             if h in known:
                 stats["skipped"] += 1
@@ -423,7 +442,11 @@ class WordPressArchiver:
                     capture_output=True, text=True, timeout=timeout
                 )
                 if result.returncode != 0:
-                    msg = (result.stderr or result.stdout or '').strip()[:500]
+                    err = (result.stderr or result.stdout or '').strip()
+                    # Prefer yt-dlp's actual ERROR line over any leading warnings
+                    # (e.g. the JS-runtime warning) that a blind [:500] would capture.
+                    error_lines = [ln for ln in err.splitlines() if 'ERROR' in ln]
+                    msg = (error_lines[-1] if error_lines else err[-500:]).strip()[:500]
                     self.db.insert_video(h, embed, None, None, None, 0, 'failed', msg)
                     stats["failed"] = stats.get("failed", 0) + 1
                     stats["errors"] += 1
@@ -485,10 +508,12 @@ class WordPressArchiver:
     # ENDPOINTS (REST discovery completeness net -> api_objects)
     # =========================================================================
 
-    def archive_all_endpoints(self, api: WordPressAPI) -> Dict[str, int]:
+    def archive_all_endpoints(self, api: WordPressAPI,
+                              limit: Optional[int] = None) -> Dict[str, int]:
         """Walk the REST discovery index and archive every collection it lists
         that isn't already a typed table (CPTs, custom taxonomies, menus,
         templates, plugin routes...) as raw JSON, so nothing is silently missed.
+        ``limit`` caps objects archived per route for quick preview runs.
         """
         stats = _new_stats(discovered=0, skipped=0, routes=0)
         try:
@@ -518,7 +543,7 @@ class WordPressArchiver:
 
         for route in collection_routes:
             try:
-                self._archive_endpoint(api, route, stats)
+                self._archive_endpoint(api, route, stats, limit=limit)
             except Exception as e:
                 logger.warning(f"Error archiving endpoint {route}: {e}")
                 stats["errors"] += 1
@@ -547,7 +572,11 @@ class WordPressArchiver:
             if 'GET' not in methods:
                 continue
             last = path.rstrip('/').split('/')[-1]
-            if path.startswith('/wp/v2/') and last in TYPED_REST_BASES:
+            # Skip a typed base only when it's the direct /wp/v2/<base> collection,
+            # not a deeper sub-route that merely ends in the same word (e.g.
+            # /wp/v2/block-patterns/categories must still be archived).
+            if (path.startswith('/wp/v2/') and last in TYPED_REST_BASES
+                    and path.rstrip('/').count('/') == 3):
                 continue
             # 'search' is a query interface that only returns stub pointers to
             # content we already archive in full — skip it (no losslessness value).
@@ -556,9 +585,14 @@ class WordPressArchiver:
             out.append(path)
         return out
 
-    def _archive_endpoint(self, api: WordPressAPI, route: str, stats: Dict[str, int]):
-        """Paginate one collection route and store each object in api_objects."""
+    def _archive_endpoint(self, api: WordPressAPI, route: str, stats: Dict[str, int],
+                          limit: Optional[int] = None):
+        """Paginate one collection route and store each object in api_objects.
+
+        ``limit`` caps how many objects are stored from this route (preview runs).
+        """
         page = 1
+        route_count = 0
         while True:
             try:
                 response = api.get_json(route, params={'page': page, 'per_page': 100})
@@ -580,7 +614,10 @@ class WordPressArchiver:
                 break
 
             for item in items:
+                if limit and route_count >= limit:
+                    break
                 stats["discovered"] += 1
+                route_count += 1
                 raw = json.dumps(item, ensure_ascii=False)
                 wp_id = self._api_object_id(item, raw)
                 content_hash = self.content_processor.calculate_content_hash(raw)
@@ -595,7 +632,19 @@ class WordPressArchiver:
                 else:
                     stats["skipped"] += 1
 
-            if not isinstance(data, list) or page >= response.total_pages_count:
+            if limit and route_count >= limit:
+                break
+            if not isinstance(data, list):
+                break
+            # Don't blindly trust X-WP-TotalPages: custom/plugin routes often omit
+            # it (it defaults to 1), which would stop the walk after page 1. A full
+            # page (100 items) means another page may follow; a short page is the
+            # end. Cap pages as a backstop against a route that never empties.
+            more = len(items) >= 100
+            if page >= response.total_pages_count and not more:
+                break
+            if page >= 1000:
+                logger.warning(f"Stopping pagination of {route} at safety cap (page {page})")
                 break
             page += 1
 

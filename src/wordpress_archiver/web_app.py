@@ -57,8 +57,11 @@ _REWRITE_SRCSET_RX = re.compile(
     r'(srcset\s*=\s*["\'])([^"\']+)(["\'])', re.IGNORECASE)
 _REWRITE_UPLOAD_HREF_RX = re.compile(
     r'(<a\b[^>]*?\bhref\s*=\s*["\'])([^"\']*wp-content/uploads[^"\']*)(["\'])', re.IGNORECASE)
+# Matches url(x), url('x') and url( "x" ) alike. Group 2 is the bare URL
+# (no quotes/whitespace/paren) so it normalizes to the same hash the archiver's
+# _CSS_URL_RE produced at download time; groups 1 and 3 preserve any quotes.
 _REWRITE_CSS_URL_RX = re.compile(
-    r'(url\()([^"\'\)]+)(\))', re.IGNORECASE)
+    r'(url\(\s*["\']?)([^"\'\)\s]+)(["\']?\s*\))', re.IGNORECASE)
 _REWRITE_IFRAME_VIDEO_RX = re.compile(
     r'<iframe\b[^>]*?\bsrc\s*=\s*["\']([^"\']+)["\'][^>]*>(?:.*?</iframe>)?',
     re.IGNORECASE | re.DOTALL)
@@ -830,13 +833,15 @@ def raw_endpoints():
     return render_template('raw_endpoints.html', endpoints=endpoints)
 
 
-@app.route('/raw/<path:endpoint>')
-def raw_objects(endpoint):
+@app.route('/raw/<path:endpoint_name>')
+def raw_objects(endpoint_name):
     """Browse raw API objects for a given endpoint with pagination."""
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
+    # Clamp user-supplied paging: per_page=0 would divide-by-zero, page<1 would
+    # produce a negative OFFSET. Cap per_page to keep one page bounded.
+    page = max(1, request.args.get('page', 1, type=int))
+    per_page = min(200, max(1, request.args.get('per_page', 20, type=int)))
     db = get_db_manager()
-    rows, total, total_pages = db.get_paginated_api_objects(endpoint, page, per_page)
+    rows, total, total_pages = db.get_paginated_api_objects(endpoint_name, page, per_page)
     objects_data = []
     for row in rows:
         obj = dict(row)
@@ -852,7 +857,7 @@ def raw_objects(endpoint):
         objects_data.append(obj)
     return render_template(
         'raw_objects.html',
-        endpoint=endpoint,
+        endpoint=endpoint_name,
         objects=objects_data,
         page=page,
         total_pages=total_pages,

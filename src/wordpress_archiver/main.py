@@ -163,9 +163,9 @@ def archive_command(args):
                 try:
                     logger.info(f"Archiving {content_type}...")
                     if content_type == 'media':
-                        stats = archiver.archive_media(api)
+                        stats = archiver.archive_media(api, limit=args.limit)
                     elif content_type == 'endpoints':
-                        stats = archiver.archive_all_endpoints(api)
+                        stats = archiver.archive_all_endpoints(api, limit=args.limit)
                     else:
                         stats = archiver.archive_content(
                             api,
@@ -380,7 +380,8 @@ Examples:
     archive_parser.add_argument(
         '--limit', '-l',
         type=int,
-        help="Limit number of items to archive per content type"
+        help="Limit items per phase (content type, media downloads, and objects "
+             "per REST route) — for quick preview runs. Omit for a full archive."
     )
     archive_parser.add_argument(
         '--no-media',
@@ -435,8 +436,10 @@ Examples:
     web_parser = subparsers.add_parser('web', help='Start web interface')
     web_parser.add_argument(
         '--host',
-        default='0.0.0.0',
-        help="Host to bind to (default: 0.0.0.0)"
+        default='127.0.0.1',
+        help="Host to bind to (default: 127.0.0.1, local-only). Use 0.0.0.0 to "
+             "expose on your LAN — note the viewer serves ALL archived content, "
+             "including private/draft data and user emails captured via --auth."
     )
     web_parser.add_argument(
         '--port',
