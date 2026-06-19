@@ -9,6 +9,8 @@ import json
 import hashlib
 import shutil
 import subprocess
+import sys
+import importlib.util
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from pathlib import Path
@@ -366,7 +368,8 @@ class WordPressArchiver:
         recorded, never fatal. Already-downloaded embeds are skipped.
         """
         stats = _new_stats(discovered=0, downloaded=0, skipped=0)
-        if not shutil.which('yt-dlp'):
+        ytdlp_base = self._ytdlp_command()
+        if ytdlp_base is None:
             logger.warning("yt-dlp not found; skipping video download. "
                            "Install with: pip install yt-dlp (and ffmpeg for merging).")
             return stats
@@ -411,7 +414,7 @@ class WordPressArchiver:
             output_template = str(videos_dir / f"{h}.%(ext)s")
             try:
                 result = subprocess.run(
-                    ['yt-dlp', '-f', fmt, *merge_args,
+                    [*ytdlp_base, '-f', fmt, *merge_args,
                      '--no-playlist',
                      '-o', output_template,
                      # --print implies --simulate; --no-simulate forces the download.
@@ -462,6 +465,21 @@ class WordPressArchiver:
             f"{stats.get('failed', 0)} failed"
         )
         return stats
+
+    @staticmethod
+    def _ytdlp_command() -> Optional[List[str]]:
+        """Resolve how to invoke yt-dlp.
+
+        Prefer the copy installed in the current interpreter (``python -m yt_dlp``)
+        because it is unconfined — a snap-packaged ``yt-dlp`` on PATH cannot run
+        deno or download remote challenge solvers and silently fails. Fall back to
+        a ``yt-dlp`` binary on PATH only if the module isn't importable.
+        """
+        if importlib.util.find_spec('yt_dlp') is not None:
+            return [sys.executable, '-m', 'yt_dlp']
+        if shutil.which('yt-dlp'):
+            return ['yt-dlp']
+        return None
 
     # =========================================================================
     # ENDPOINTS (REST discovery completeness net -> api_objects)

@@ -40,6 +40,13 @@ setup(
         "markupsafe>=2.0.0",
     ],
     extras_require={
+        # Video archiving (opt-in --download-videos). Installing yt-dlp in the
+        # same environment is preferred — the archiver runs it as `python -m
+        # yt_dlp`, avoiding snap-confined builds that can't solve YouTube's JS
+        # challenge. A system ffmpeg is also needed to merge >720p streams.
+        "video": [
+            "yt-dlp>=2024.1.0",
+        ],
         "dev": [
             "pytest>=6.0.0",
             "pytest-cov>=2.0.0",
