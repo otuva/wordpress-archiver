@@ -286,19 +286,4 @@ html {
     scroll-behavior: smooth;
 }
 </style>
-<script>
-// Highlight comment when page loads with anchor
-window.addEventListener('DOMContentLoaded', function() {
-    const hash = window.location.hash;
-    if (hash) {
-        const commentElement = document.querySelector(hash);
-        if (commentElement) {
-            commentElement.classList.add('highlight');
-            setTimeout(function() {
-                commentElement.classList.remove('highlight');
-            }, 2000);
-        }
-    }
-});
-</script>
 {% endblock %}

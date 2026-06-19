@@ -8,16 +8,19 @@ comments, pages, users, categories, and tags.
 
 import json
 import os
+import re
+import time
 import sqlite3
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, Response, send_file, current_app
 from markupsafe import Markup
 import html
 
 from .database import DatabaseManager
+from .content_processor import normalize_asset_url, url_hash, is_archivable_asset, extract_video_embeds, _VIDEO_HOSTS
 
 # =============================================================================
 # FLASK APP CONFIGURATION
@@ -37,19 +40,147 @@ sqlite3.enable_callback_tracebacks(True)
 # UTILITY FUNCTIONS
 # =============================================================================
 
+# =============================================================================
+# DISPLAY-TIME ASSET REWRITING (module-level caches & precompiled regexes)
+# =============================================================================
+
+# Lazy caches — loaded once on first render_html call. Restarting the server
+# picks up newly downloaded videos.
+_site_url_cache = None
+_video_hash_cache = None
+_video_cache_loaded_at = 0.0
+
+# Precompiled regexes for URL rewriting (no BeautifulSoup dependency).
+_REWRITE_IMG_SRC_RX = re.compile(
+    r'(<img\b[^>]*?\bsrc\s*=\s*["\'])([^"\']+)(["\'])', re.IGNORECASE)
+_REWRITE_SOURCE_SRC_RX = re.compile(
+    r'(<source\b[^>]*?\bsrc\s*=\s*["\'])([^"\']+)(["\'])', re.IGNORECASE)
+_REWRITE_SRCSET_RX = re.compile(
+    r'(srcset\s*=\s*["\'])([^"\']+)(["\'])', re.IGNORECASE)
+_REWRITE_UPLOAD_HREF_RX = re.compile(
+    r'(<a\b[^>]*?\bhref\s*=\s*["\'])([^"\']*wp-content/uploads[^"\']*)(["\'])', re.IGNORECASE)
+# Matches url(x), url('x') and url( "x" ) alike. Group 2 is the bare URL
+# (no quotes/whitespace/paren) so it normalizes to the same hash the archiver's
+# _CSS_URL_RE produced at download time; groups 1 and 3 preserve any quotes.
+_REWRITE_CSS_URL_RX = re.compile(
+    r'(url\(\s*["\']?)([^"\'\)\s]+)(["\']?\s*\))', re.IGNORECASE)
+_REWRITE_IFRAME_VIDEO_RX = re.compile(
+    r'<iframe\b[^>]*?\bsrc\s*=\s*["\']([^"\']+)["\'][^>]*>(?:.*?</iframe>)?',
+    re.IGNORECASE | re.DOTALL)
+_REWRITE_META_IMG_RX = re.compile(
+    r'(<meta\b[^>]*?(?:property|name)\s*=\s*["\'](?:og:image(?::url)?|twitter:image)["\']'
+    r'[^>]*?\bcontent\s*=\s*["\'])([^"\']+)(["\'])', re.IGNORECASE)
+_REWRITE_ANY_UPLOAD_RX = re.compile(
+    r'https?://[^\s"\'<>()]+/wp-content/uploads/[^\s"\'<>()]+', re.IGNORECASE)
+
+
+# 1x1 transparent GIF placeholder for missing media assets (43 bytes).
+_TRANSPARENT_GIF = (
+    b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x80\x00\x00'
+    b'\xff\xff\xff\x00\x00\x00\x21\xf9\x04\x00\x00\x00\x00\x00'
+    b'\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b'
+)
+
+
 def render_html(text: str) -> str:
     """
     Render HTML content safely for display in templates.
-    
+    Rewrites asset URLs to local /media/<hash> routes and converts downloaded
+    video iframes to <video> elements. Stored content is never mutated.
+
     Args:
         text: Raw HTML text to render
-        
+
     Returns:
         Safely rendered HTML markup
     """
     if not text:
         return ""
     decoded = html.unescape(text)
+
+    # Lazy-load caches on first use (app context must be active).
+    global _site_url_cache, _video_hash_cache, _video_cache_loaded_at
+    if _site_url_cache is None:
+        _site_url_cache = get_db_manager().get_meta('site_url') or ''
+    if _video_hash_cache is None or time.time() - _video_cache_loaded_at > 60:
+        _video_hash_cache = get_db_manager().downloaded_video_hashes()
+        _video_cache_loaded_at = time.time()
+
+    site_url = _site_url_cache
+    downloaded_videos = _video_hash_cache
+
+    # --- Replace video iframes that have been downloaded with <video> ---
+    def _replace_video_iframe(m):
+        src = m.group(1).strip()
+        # Handle protocol-relative URLs identically to extract_video_embeds
+        check_src = src
+        if src.lower().startswith('//'):
+            check_src = 'https:' + src
+        # Only touch known video hosts; leave other embeds intact
+        if not any(h in check_src.lower() for h in _VIDEO_HOSTS):
+            return m.group(0)
+        # Hashing must use the same logic as the archiver
+        norm = normalize_asset_url(check_src, site_url)
+        h = url_hash(norm)
+        if h in downloaded_videos:
+            return ('<video controls preload="metadata" style="max-width:100%">'
+                    f'<source src="/video/{h}" type="video/mp4">'
+                    'Your browser does not support the video tag.</video>')
+        # Not downloaded — keep the iframe as-is (works online via frame-src *)
+        return m.group(0)
+
+    decoded = _REWRITE_IFRAME_VIDEO_RX.sub(_replace_video_iframe, decoded)
+
+    # --- Generic asset URL rewriting (img, source, upload href, css url) ---
+    def _rewrite_asset_url(m):
+        before = m.group(1)
+        url = m.group(2)
+        after = m.group(3)
+        norm = normalize_asset_url(url, site_url)
+        if norm and is_archivable_asset(norm):
+            return before + '/media/' + url_hash(norm) + after
+        return m.group(0)
+
+    decoded = _REWRITE_IMG_SRC_RX.sub(_rewrite_asset_url, decoded)
+    decoded = _REWRITE_SOURCE_SRC_RX.sub(_rewrite_asset_url, decoded)
+    decoded = _REWRITE_UPLOAD_HREF_RX.sub(_rewrite_asset_url, decoded)
+    decoded = _REWRITE_CSS_URL_RX.sub(_rewrite_asset_url, decoded)
+
+    # --- srcset rewriting (each attribute holds multiple URL+descriptor pairs) ---
+    def _rewrite_srcset(m):
+        before = m.group(1)
+        value = m.group(2)
+        after = m.group(3)
+        parts = []
+        for candidate in value.split(','):
+            candidate = candidate.strip()
+            if not candidate:
+                continue
+            tokens = candidate.split()
+            if not tokens:
+                continue
+            url = tokens[0]
+            norm = normalize_asset_url(url, site_url)
+            if norm and is_archivable_asset(norm):
+                tokens[0] = '/media/' + url_hash(norm)
+            parts.append(' '.join(tokens))
+        return before + ', '.join(parts) + after
+
+    decoded = _REWRITE_SRCSET_RX.sub(_rewrite_srcset, decoded)
+
+    # --- Meta og:image / twitter:image rewrite ---
+    decoded = _REWRITE_META_IMG_RX.sub(_rewrite_asset_url, decoded)
+
+    # --- Generic uploads URL rewrite (catches data-src, style, etc.) ---
+    def _rewrite_any_upload(m):
+        url = m.group(0)
+        norm = normalize_asset_url(url, site_url)
+        if norm and is_archivable_asset(norm):
+            return '/media/' + url_hash(norm)
+        return url
+
+    decoded = _REWRITE_ANY_UPLOAD_RX.sub(_rewrite_any_upload, decoded)
+
     return Markup(decoded)
 
 
@@ -66,9 +197,15 @@ def calculate_indentation(level: int) -> int:
     return min(level * 20, 200)
 
 
+_db_manager = None
+
 def get_db_manager() -> DatabaseManager:
     """Get database manager instance."""
-    return DatabaseManager(app.config['DATABASE'])
+    global _db_manager
+    db_path = app.config['DATABASE']
+    if _db_manager is None or str(_db_manager.db_path) != db_path:
+        _db_manager = DatabaseManager(db_path)
+    return _db_manager
 
 
 def get_archive_stats() -> Dict[str, Any]:
@@ -87,6 +224,25 @@ def get_archive_stats() -> Dict[str, Any]:
 app.jinja_env.filters['render_html'] = render_html
 app.jinja_env.filters['calculate_indentation'] = calculate_indentation
 
+
+def rewrite_url(url):
+    """Jinja filter: rewrite a single asset URL to local /media/<hash>.
+
+    Used for standalone URLs such as avatars that are not embedded in HTML.
+    """
+    if not url:
+        return url
+    global _site_url_cache
+    if _site_url_cache is None:
+        _site_url_cache = get_db_manager().get_meta('site_url') or ''
+    norm = normalize_asset_url(url, _site_url_cache)
+    if norm and is_archivable_asset(norm):
+        return '/media/' + url_hash(norm)
+    return url
+
+
+app.jinja_env.filters['rewrite_url'] = rewrite_url
+
 # =============================================================================
 # CONTEXT PROCESSORS
 # =============================================================================
@@ -95,6 +251,35 @@ app.jinja_env.filters['calculate_indentation'] = calculate_indentation
 def inject_current_year():
     """Inject current year into all templates."""
     return {'current_year': datetime.now().year}
+
+# =============================================================================
+# SECURITY HEADERS
+# =============================================================================
+
+# Content Security Policy: archived HTML is stored and served verbatim, but the
+# browser must never EXECUTE script it contains. script-src is locked to 'self'
+# (only our own vendored JS), so inline <script>, javascript: URLs and on*=
+# handlers coming from arbitrary archived sites are inert. Inline styles, images,
+# fonts and iframe embeds stay allowed so archived content renders faithfully.
+CSP_POLICY = "; ".join([
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com",
+    "img-src * data:",
+    "media-src 'self'",
+    "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:",
+    "frame-src *",
+    "object-src 'none'",
+    "base-uri 'self'",
+])
+
+
+@app.after_request
+def set_security_headers(response):
+    """Attach a CSP that neutralizes any script embedded in archived content."""
+    response.headers['Content-Security-Policy'] = CSP_POLICY
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
 
 # =============================================================================
 # ROUTE HANDLERS - MAIN PAGES
@@ -143,24 +328,29 @@ def post_detail(wp_id):
         version: Specific version to display
     """
     version = request.args.get('version', type=int)
-    
+
     db = get_db_manager()
-    
-    # Get post versions
-    if version:
-        post_versions = db.get_content_versions('posts', wp_id)
-        post_versions = [p for p in post_versions if p['version'] == version]
-    else:
-        post_versions = db.get_content_versions('posts', wp_id)
-    
+
+    # Always load the full version history so the version switcher stays
+    # available. When a specific version is requested, surface it as the
+    # displayed one (post_versions[0]) without dropping the other versions
+    # the switcher needs to navigate between them.
+    post_versions = db.get_content_versions('posts', wp_id)
     if not post_versions:
         return "Post not found", 404
-    
+    if version:
+        selected = [p for p in post_versions if p['version'] == version]
+        if selected:
+            others = [p for p in post_versions if p['version'] != version]
+            post_versions = selected + others
+    if version and not selected:
+        return ("Post version not found", 404)
+
     # Get comments for this post
     comments = db.get_post_comments(wp_id)
-    
-    # Get categories and tags for the post (use selected version or latest)
-    post_version = version if version else (post_versions[0]['version'] if post_versions else None)
+
+    # Get categories and tags for the displayed (front) version.
+    post_version = post_versions[0]['version']
     categories = db.get_post_categories(wp_id, post_version)
     tags = db.get_post_tags(wp_id, post_version)
     
@@ -619,4 +809,86 @@ def _parse_content_type(content_type_str: str) -> Dict[str, Any]:
         'types': []
     }
 
- 
+
+# =============================================================================
+# ROUTE HANDLERS - MEDIA & RAW API
+# =============================================================================
+
+
+@app.route('/media/<url_hash>')
+def serve_media(url_hash):
+    """Serve archived media files by URL hash (images, documents, etc.)."""
+    db = get_db_manager()
+    media = db.get_media_by_url_hash(url_hash)
+    if media and media.get('status') == 'ok' and media.get('content') is not None:
+        resp = Response(
+            media['content'],
+            mimetype=media.get('mime_type', 'application/octet-stream')
+        )
+        resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        resp.headers['X-Content-Type-Options'] = 'nosniff'
+        return resp
+    # Return 1x1 transparent GIF for misses / failed / oversized
+    return Response(
+        _TRANSPARENT_GIF,
+        mimetype='image/gif',
+        headers={'Cache-Control': 'no-cache'}
+    )
+
+
+@app.route('/video/<url_hash>')
+def serve_video(url_hash):
+    """Serve downloaded video files by URL hash."""
+    db = get_db_manager()
+    video = db.get_video_by_url_hash(url_hash)
+    if video and video.get('status') == 'downloaded':
+        local_path = video.get('local_path')
+        if local_path:
+            db_path = Path(current_app.config['DATABASE'])
+            video_dir = db_path.parent / (db_path.stem + '_media') / 'videos'
+            video_file = video_dir / local_path
+            if video_file.exists():
+                return send_file(str(video_file), mimetype='video/mp4')
+    return ("Video not available", 404)
+
+
+@app.route('/raw')
+def raw_endpoints():
+    """List all available API endpoints with object counts."""
+    db = get_db_manager()
+    endpoints = db.get_api_endpoints()
+    return render_template('raw_endpoints.html', endpoints=endpoints)
+
+
+@app.route('/raw/<path:endpoint_name>')
+def raw_objects(endpoint_name):
+    """Browse raw API objects for a given endpoint with pagination."""
+    # Clamp user-supplied paging: per_page=0 would divide-by-zero, page<1 would
+    # produce a negative OFFSET. Cap per_page to keep one page bounded.
+    page = max(1, request.args.get('page', 1, type=int))
+    per_page = min(200, max(1, request.args.get('per_page', 20, type=int)))
+    db = get_db_manager()
+    lookup = '/' + endpoint_name.lstrip('/')
+    rows, total, total_pages = db.get_paginated_api_objects(lookup, page, per_page)
+    objects_data = []
+    for row in rows:
+        obj = dict(row)
+        if obj.get('raw_json'):
+            try:
+                obj['pretty_json'] = json.dumps(
+                    json.loads(obj['raw_json']),
+                    indent=2,
+                    ensure_ascii=False
+                )
+            except (json.JSONDecodeError, TypeError):
+                obj['pretty_json'] = obj['raw_json']
+        objects_data.append(obj)
+    return render_template(
+        'raw_objects.html',
+        endpoint=endpoint_name,
+        objects=objects_data,
+        page=page,
+        total_pages=total_pages,
+        total=total,
+        per_page=per_page
+    )

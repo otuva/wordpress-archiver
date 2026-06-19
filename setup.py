@@ -40,6 +40,14 @@ setup(
         "markupsafe>=2.0.0",
     ],
     extras_require={
+        # Video archiving (opt-in --download-videos). Per yt-dlp's official
+        # install docs, prefer pip (or the standalone binary) over distro/snap
+        # builds, which are third-party and often outdated. Installing here puts
+        # yt-dlp in this env, so the archiver runs it as `python -m yt_dlp`
+        # (unconfined). A system ffmpeg is also needed to merge >720p streams.
+        "video": [
+            "yt-dlp[default]",
+        ],
         "dev": [
             "pytest>=6.0.0",
             "pytest-cov>=2.0.0",
@@ -55,7 +63,11 @@ setup(
     },
     include_package_data=True,
     package_data={
-        "wordpress_archiver": ["templates/*.html"],
+        "wordpress_archiver": [
+            "templates/*.html",
+            "static/css/*.css",
+            "static/js/*.js",
+        ],
     },
     keywords="wordpress, archive, backup, sqlite, content-management",
     project_urls={

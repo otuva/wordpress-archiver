@@ -165,6 +165,64 @@ POST_TAGS_TABLE_SCHEMA = '''
     )
 '''
 
+# Stores the actual bytes of every referenced image/PDF/avatar so the archive is
+# self-contained (single portable file). Keyed by url_hash = sha256(normalized url).
+MEDIA_TABLE_SCHEMA = '''
+    CREATE TABLE IF NOT EXISTS media (
+        id INTEGER PRIMARY KEY,
+        url_hash TEXT NOT NULL UNIQUE,
+        url TEXT NOT NULL,
+        content BLOB,
+        content_hash TEXT,
+        mime_type TEXT DEFAULT 'application/octet-stream',
+        byte_size INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'ok',
+        http_status INTEGER,
+        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+'''
+
+# Tracks videos downloaded with yt-dlp to a folder on disk (NOT in the DB — too
+# large). local_path is the filename within <db>_media/videos/.
+VIDEOS_TABLE_SCHEMA = '''
+    CREATE TABLE IF NOT EXISTS videos (
+        id INTEGER PRIMARY KEY,
+        url_hash TEXT NOT NULL UNIQUE,
+        embed_url TEXT NOT NULL,
+        local_path TEXT,
+        title TEXT,
+        file_ext TEXT,
+        file_size INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+'''
+
+# Completeness net: raw JSON of every collection object the REST discovery index
+# exposes that isn't already in a typed table (CPTs, custom taxonomies, menus,
+# templates, plugin routes). Versioned like the typed tables.
+API_OBJECTS_TABLE_SCHEMA = '''
+    CREATE TABLE IF NOT EXISTS api_objects (
+        id INTEGER PRIMARY KEY,
+        endpoint TEXT NOT NULL,
+        wp_id INTEGER,
+        raw_json TEXT NOT NULL,
+        content_hash TEXT,
+        version INTEGER DEFAULT 1,
+        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(endpoint, wp_id, version)
+    )
+'''
+
+# Key/value store for archive-wide metadata (site_url, REST discovery document).
+ARCHIVE_META_TABLE_SCHEMA = '''
+    CREATE TABLE IF NOT EXISTS archive_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )
+'''
+
 # =============================================================================
 # DATABASE INDEXES
 # =============================================================================
@@ -186,7 +244,18 @@ DATABASE_INDEXES = [
     ("idx_post_categories_category", "post_categories", "category_wp_id"),
     ("idx_post_tags_post", "post_tags", "post_wp_id"),
     ("idx_post_tags_tag", "post_tags", "tag_wp_id"),
+    ("idx_media_url_hash", "media", "url_hash"),
+    ("idx_media_content_hash", "media", "content_hash"),
+    ("idx_media_status", "media", "status"),
+    ("idx_videos_url_hash", "videos", "url_hash"),
+    ("idx_videos_status", "videos", "status"),
+    ("idx_api_objects_endpoint", "api_objects", "endpoint"),
+    ("idx_api_objects_wp_id", "api_objects", "wp_id"),
+    ("idx_api_objects_endpoint_wpid_ver", "api_objects", "endpoint, wp_id, version"),
 ]
+
+# Versioned content tables that gain a raw_json column via migration.
+RAW_JSON_TABLES = ['posts', 'comments', 'pages', 'users', 'categories', 'tags']
 
 # =============================================================================
 # DATABASE MANAGER CLASS
@@ -237,14 +306,17 @@ class DatabaseManager:
             
             # Create tables
             self._create_tables(cursor)
-            
+
+            # Apply additive migrations to pre-existing databases
+            self._apply_migrations(cursor)
+
             # Create indexes
             self._create_indexes(cursor)
-            
+
             conn.commit()
-            
+
         logger.info("Database schema initialized successfully")
-    
+
     def _create_tables(self, cursor):
         """Create all database tables."""
         schemas = [
@@ -257,11 +329,32 @@ class DatabaseManager:
             SESSIONS_TABLE_SCHEMA,
             POST_CATEGORIES_TABLE_SCHEMA,
             POST_TAGS_TABLE_SCHEMA,
+            MEDIA_TABLE_SCHEMA,
+            VIDEOS_TABLE_SCHEMA,
+            API_OBJECTS_TABLE_SCHEMA,
+            ARCHIVE_META_TABLE_SCHEMA,
         ]
-        
+
         for schema in schemas:
             cursor.execute(schema)
-    
+
+    def _column_exists(self, cursor, table: str, column: str) -> bool:
+        """Return True if a column already exists on a table."""
+        cursor.execute(f"PRAGMA table_info({table})")
+        return any(row[1] == column for row in cursor.fetchall())
+
+    def _apply_migrations(self, cursor):
+        """
+        Idempotently bring an older database up to the current schema.
+
+        Only additive ALTER TABLE ADD COLUMN — never drops or rewrites data, so
+        existing archives upgrade in place without loss.
+        """
+        for table in RAW_JSON_TABLES:
+            if not self._column_exists(cursor, table, 'raw_json'):
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN raw_json TEXT")
+                logger.info(f"Migration: added {table}.raw_json")
+
     def _create_indexes(self, cursor):
         """Create database indexes for better query performance."""
         for index_name, table, column in DATABASE_INDEXES:
@@ -369,14 +462,14 @@ class DatabaseManager:
             
             if content_type == 'posts':
                 cursor.execute('''
-                    INSERT INTO posts 
-                    (wp_id, title, content, excerpt, author_id, date_created, 
-                     date_modified, status, content_hash, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO posts
+                    (wp_id, title, content, excerpt, author_id, date_created,
+                     date_modified, status, content_hash, version, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['title'], data['content'], data['excerpt'],
                     data['author_id'], data['date_created'], data['date_modified'],
-                    data['status'], data['content_hash'], version
+                    data['status'], data['content_hash'], version, data.get('raw_json')
                 ))
                 
                 # Save post-category relationships
@@ -408,26 +501,26 @@ class DatabaseManager:
                             pass
             elif content_type == 'comments':
                 cursor.execute('''
-                    INSERT INTO comments 
-                    (wp_id, post_id, parent_id, author_name, author_email, author_url, 
-                     content, date_created, status, content_hash, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO comments
+                    (wp_id, post_id, parent_id, author_name, author_email, author_url,
+                     content, date_created, status, content_hash, version, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['post_id'], data['parent_id'],
                     data['author_name'], data['author_email'], data['author_url'],
                     data['content'], data['date_created'], data['status'],
-                    data['content_hash'], version
+                    data['content_hash'], version, data.get('raw_json')
                 ))
             elif content_type == 'pages':
                 cursor.execute('''
-                    INSERT INTO pages 
-                    (wp_id, title, content, excerpt, author_id, date_created, 
-                     date_modified, status, content_hash, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO pages
+                    (wp_id, title, content, excerpt, author_id, date_created,
+                     date_modified, status, content_hash, version, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['title'], data['content'], data['excerpt'],
                     data['author_id'], data['date_created'], data['date_modified'],
-                    data['status'], data['content_hash'], version
+                    data['status'], data['content_hash'], version, data.get('raw_json')
                 ))
             elif content_type == 'users':
                 # Convert dict fields to JSON strings for SQLite
@@ -440,40 +533,196 @@ class DatabaseManager:
                     mpp_avatar = json.dumps(mpp_avatar)
                 
                 cursor.execute('''
-                    INSERT INTO users 
-                    (wp_id, name, url, description, link, slug, avatar_urls, 
-                     mpp_avatar, content_hash, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO users
+                    (wp_id, name, url, description, link, slug, avatar_urls,
+                     mpp_avatar, content_hash, version, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['name'], data['url'], data['description'],
                     data['link'], data['slug'], avatar_urls,
-                    mpp_avatar, data['content_hash'], version
+                    mpp_avatar, data['content_hash'], version, data.get('raw_json')
                 ))
             elif content_type == 'categories':
                 cursor.execute('''
-                    INSERT INTO categories 
-                    (wp_id, name, description, link, slug, taxonomy, parent, 
-                     count, content_hash, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO categories
+                    (wp_id, name, description, link, slug, taxonomy, parent,
+                     count, content_hash, version, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['name'], data['description'], data['link'],
                     data['slug'], data['taxonomy'], data['parent'], data['count'],
-                    data['content_hash'], version
+                    data['content_hash'], version, data.get('raw_json')
                 ))
             elif content_type == 'tags':
                 cursor.execute('''
-                    INSERT INTO tags 
-                    (wp_id, name, description, link, slug, taxonomy, count, 
-                     content_hash, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO tags
+                    (wp_id, name, description, link, slug, taxonomy, count,
+                     content_hash, version, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['name'], data['description'], data['link'],
                     data['slug'], data['taxonomy'], data['count'],
-                    data['content_hash'], version
+                    data['content_hash'], version, data.get('raw_json')
                 ))
             
             conn.commit()
-    
+
+    # =============================================================================
+    # LOSSLESS ARCHIVE STORES (media blobs, videos, raw endpoints, meta)
+    # =============================================================================
+
+    def update_latest_raw_json(self, content_type: str, wp_id: int, raw_json: str):
+        """
+        Refresh raw_json on the latest version row in place (no new version).
+
+        Used on re-runs where the visible content is unchanged but the API
+        metadata changed, so the newest metadata stays current while content
+        history remains strictly append-only.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"""
+                UPDATE {content_type} SET raw_json = ?
+                WHERE wp_id = ? AND version = (
+                    SELECT MAX(version) FROM {content_type} WHERE wp_id = ?
+                )
+            """, (raw_json, wp_id, wp_id))
+            conn.commit()
+
+    # --- media -----------------------------------------------------------------
+
+    def get_media_by_url_hash(self, url_hash: str) -> Optional[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM media WHERE url_hash = ?", (url_hash,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def media_url_hashes(self) -> set:
+        """All url_hashes already in the media table (for cheap incremental skips)."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT url_hash FROM media WHERE status != 'failed'")
+            return {row[0] for row in cursor.fetchall()}
+
+    def insert_media(self, url_hash: str, url: str, content: Optional[bytes],
+                     content_hash: Optional[str], mime_type: Optional[str],
+                     status: str, http_status: Optional[int]):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO media
+                (url_hash, url, content, content_hash, mime_type, byte_size, status, http_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                url_hash, url, content, content_hash,
+                mime_type or 'application/octet-stream',
+                len(content) if content else 0, status, http_status
+            ))
+            conn.commit()
+
+    # --- videos ----------------------------------------------------------------
+
+    def get_video_by_url_hash(self, url_hash: str) -> Optional[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM videos WHERE url_hash = ?", (url_hash,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def downloaded_video_hashes(self) -> set:
+        """url_hashes of successfully downloaded videos (viewer rewrite + skip)."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT url_hash FROM videos WHERE status = 'downloaded'")
+            return {row[0] for row in cursor.fetchall()}
+
+    def insert_video(self, url_hash: str, embed_url: str, local_path: Optional[str],
+                     title: Optional[str], file_ext: Optional[str], file_size: int,
+                     status: str, error_message: Optional[str]):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO videos
+                (url_hash, embed_url, local_path, title, file_ext, file_size, status, error_message)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (url_hash, embed_url, local_path, title, file_ext, file_size, status, error_message))
+            conn.commit()
+
+    # --- api_objects (REST discovery completeness net) -------------------------
+
+    def get_api_object_latest(self, endpoint: str, wp_id: int) -> Optional[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM api_objects
+                WHERE endpoint = ? AND wp_id = ?
+                ORDER BY version DESC LIMIT 1
+            """, (endpoint, wp_id))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def insert_api_object(self, endpoint: str, wp_id: Optional[int], raw_json: str,
+                          content_hash: Optional[str], version: int = 1):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO api_objects (endpoint, wp_id, raw_json, content_hash, version)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (endpoint, wp_id, raw_json, content_hash, version))
+            conn.commit()
+
+    def get_api_endpoints(self) -> List[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT endpoint, COUNT(DISTINCT wp_id) AS count
+                FROM api_objects GROUP BY endpoint ORDER BY endpoint
+            """)
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_paginated_api_objects(self, endpoint: str, page: int, per_page: int) -> tuple:
+        page = max(1, page)
+        per_page = max(1, per_page)   # guard against divide-by-zero
+        offset = (page - 1) * per_page
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) FROM api_objects
+                WHERE endpoint = ?
+                AND (wp_id, version) IN (
+                    SELECT wp_id, MAX(version) FROM api_objects WHERE endpoint = ? GROUP BY wp_id
+                )
+            """, (endpoint, endpoint))
+            total = cursor.fetchone()[0]
+            cursor.execute("""
+                SELECT wp_id, raw_json, version, fetched_at FROM api_objects
+                WHERE endpoint = ?
+                AND (wp_id, version) IN (
+                    SELECT wp_id, MAX(version) FROM api_objects WHERE endpoint = ? GROUP BY wp_id
+                )
+                ORDER BY wp_id ASC LIMIT ? OFFSET ?
+            """, (endpoint, endpoint, per_page, offset))
+            rows = [dict(r) for r in cursor.fetchall()]
+        total_pages = (total + per_page - 1) // per_page
+        return rows, total, total_pages
+
+    # --- archive_meta ----------------------------------------------------------
+
+    def set_meta(self, key: str, value: str):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT OR REPLACE INTO archive_meta (key, value) VALUES (?, ?)",
+                           (key, value))
+            conn.commit()
+
+    def get_meta(self, key: str) -> Optional[str]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM archive_meta WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
     # =============================================================================
     # POST RELATIONSHIPS (CATEGORIES AND TAGS)
     # =============================================================================
@@ -516,6 +765,7 @@ class DatabaseManager:
                 SELECT wp_id, name, description, link, slug, taxonomy, parent, count
                 FROM categories
                 WHERE wp_id IN ({placeholders})
+                AND (wp_id, version) IN (SELECT wp_id, MAX(version) FROM categories GROUP BY wp_id)
                 ORDER BY name ASC
             ''', category_ids)
             
@@ -572,6 +822,7 @@ class DatabaseManager:
                 SELECT wp_id, name, description, link, slug, taxonomy, count
                 FROM tags
                 WHERE wp_id IN ({placeholders})
+                AND (wp_id, version) IN (SELECT wp_id, MAX(version) FROM tags GROUP BY wp_id)
                 ORDER BY name ASC
             ''', tag_ids)
             
@@ -610,7 +861,7 @@ class DatabaseManager:
             cursor.execute('''
                 SELECT COUNT(DISTINCT p.wp_id)
                 FROM posts p
-                INNER JOIN post_categories pc ON p.wp_id = pc.post_wp_id
+                INNER JOIN post_categories pc ON p.wp_id = pc.post_wp_id AND pc.version = p.version
                 WHERE pc.category_wp_id = ?
                 AND p.version = (
                     SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
@@ -624,7 +875,7 @@ class DatabaseManager:
                        p.date_created, p.date_modified, p.status, p.version, p.created_at,
                        COALESCE(u.name, 'Unknown') as author_name
                 FROM posts p
-                INNER JOIN post_categories pc ON p.wp_id = pc.post_wp_id
+                INNER JOIN post_categories pc ON p.wp_id = pc.post_wp_id AND pc.version = p.version
                 LEFT JOIN users u ON p.author_id = u.wp_id AND u.version = (
                     SELECT MAX(version) FROM users WHERE wp_id = u.wp_id
                 )
@@ -661,7 +912,7 @@ class DatabaseManager:
             cursor.execute('''
                 SELECT COUNT(DISTINCT p.wp_id)
                 FROM posts p
-                INNER JOIN post_tags pt ON p.wp_id = pt.post_wp_id
+                INNER JOIN post_tags pt ON p.wp_id = pt.post_wp_id AND pt.version = p.version
                 WHERE pt.tag_wp_id = ?
                 AND p.version = (
                     SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
@@ -675,7 +926,7 @@ class DatabaseManager:
                        p.date_created, p.date_modified, p.status, p.version, p.created_at,
                        COALESCE(u.name, 'Unknown') as author_name
                 FROM posts p
-                INNER JOIN post_tags pt ON p.wp_id = pt.post_wp_id
+                INNER JOIN post_tags pt ON p.wp_id = pt.post_wp_id AND pt.version = p.version
                 LEFT JOIN users u ON p.author_id = u.wp_id AND u.version = (
                     SELECT MAX(version) FROM users WHERE wp_id = u.wp_id
                 )
@@ -711,10 +962,10 @@ class DatabaseManager:
             # Get total count of posts by this author
             cursor.execute('''
                 SELECT COUNT(*)
-                FROM posts
-                WHERE author_id = ?
-                AND version = (
-                    SELECT MAX(version) FROM posts WHERE wp_id = posts.wp_id
+                FROM posts p
+                WHERE p.author_id = ?
+                AND p.version = (
+                    SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
                 )
             ''', (author_id,))
             total_posts = cursor.fetchone()[0]
@@ -857,9 +1108,17 @@ class DatabaseManager:
             stats = {}
             
             for table in tables:
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                cursor.execute(f"SELECT COUNT(DISTINCT wp_id) FROM {table}")
                 stats[f'total_{table}'] = cursor.fetchone()[0]
             
+            # Lossless-archive stores
+            cursor.execute("SELECT COUNT(*) FROM media WHERE status = 'ok'")
+            stats['total_media'] = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM videos WHERE status = 'downloaded'")
+            stats['total_videos'] = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM (SELECT DISTINCT endpoint, wp_id FROM api_objects)")
+            stats['total_api_objects'] = cursor.fetchone()[0]
+
             # Get session statistics
             cursor.execute("SELECT COUNT(*) FROM archive_sessions")
             stats['total_sessions'] = cursor.fetchone()[0]
@@ -916,13 +1175,14 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Build search query
-            where_clause = ""
+            # Build search query (restricted to the latest version of each post)
+            conditions = ["(p.wp_id, p.version) IN (SELECT wp_id, MAX(version) FROM posts GROUP BY wp_id)"]
             params = []
             if search:
-                where_clause = "WHERE p.title LIKE ? OR p.content LIKE ?"
+                conditions.append("(p.title LIKE ? OR p.content LIKE ?)")
                 params = [f'%{search}%', f'%{search}%']
-            
+            where_clause = "WHERE " + " AND ".join(conditions)
+
             # Get total count
             count_query = f"SELECT COUNT(*) FROM posts p {where_clause}"
             cursor.execute(count_query, params)
@@ -969,13 +1229,14 @@ class DatabaseManager:
             conn.execute("PRAGMA cache_size = 10000")
             conn.execute("PRAGMA synchronous = NORMAL")
             
-            # Build search query
-            where_clause = ""
+            # Build search query (restricted to the latest version of each comment)
+            conditions = ["(c.wp_id, c.version) IN (SELECT wp_id, MAX(version) FROM comments GROUP BY wp_id)"]
             params = []
             if search:
-                where_clause = "WHERE c.author_name LIKE ? OR c.content LIKE ?"
+                conditions.append("(c.author_name LIKE ? OR c.content LIKE ?)")
                 params = [f'%{search}%', f'%{search}%']
-            
+            where_clause = "WHERE " + " AND ".join(conditions)
+
             # Get total count
             cursor.execute(f"SELECT COUNT(*) FROM comments c {where_clause}", params)
             total_comments = cursor.fetchone()[0]
@@ -1010,13 +1271,14 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Build search query
-            where_clause = ""
+            # Build search query (restricted to the latest version of each page)
+            conditions = ["(wp_id, version) IN (SELECT wp_id, MAX(version) FROM pages GROUP BY wp_id)"]
             params = []
             if search:
-                where_clause = "WHERE title LIKE ? OR content LIKE ?"
+                conditions.append("(title LIKE ? OR content LIKE ?)")
                 params = [f'%{search}%', f'%{search}%']
-            
+            where_clause = "WHERE " + " AND ".join(conditions)
+
             # Get total count
             cursor.execute(f"SELECT COUNT(*) FROM pages {where_clause}", params)
             total_pages_count = cursor.fetchone()[0]
@@ -1053,13 +1315,14 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Build search query
-            where_clause = ""
+            # Build search query (restricted to the latest version of each user)
+            conditions = ["(wp_id, version) IN (SELECT wp_id, MAX(version) FROM users GROUP BY wp_id)"]
             params = []
             if search:
-                where_clause = "WHERE name LIKE ? OR description LIKE ?"
+                conditions.append("(name LIKE ? OR description LIKE ?)")
                 params = [f'%{search}%', f'%{search}%']
-            
+            where_clause = "WHERE " + " AND ".join(conditions)
+
             # Get total count
             cursor.execute(f"SELECT COUNT(*) FROM users {where_clause}", params)
             total_users = cursor.fetchone()[0]
@@ -1096,13 +1359,14 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Build search query
-            where_clause = ""
+            # Build search query (restricted to the latest version of each category)
+            conditions = ["(wp_id, version) IN (SELECT wp_id, MAX(version) FROM categories GROUP BY wp_id)"]
             params = []
             if search:
-                where_clause = "WHERE name LIKE ? OR description LIKE ?"
+                conditions.append("(name LIKE ? OR description LIKE ?)")
                 params = [f'%{search}%', f'%{search}%']
-            
+            where_clause = "WHERE " + " AND ".join(conditions)
+
             # Get total count
             cursor.execute(f"SELECT COUNT(*) FROM categories {where_clause}", params)
             total_categories = cursor.fetchone()[0]
@@ -1139,13 +1403,14 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Build search query
-            where_clause = ""
+            # Build search query (restricted to the latest version of each tag)
+            conditions = ["(wp_id, version) IN (SELECT wp_id, MAX(version) FROM tags GROUP BY wp_id)"]
             params = []
             if search:
-                where_clause = "WHERE name LIKE ? OR description LIKE ?"
+                conditions.append("(name LIKE ? OR description LIKE ?)")
                 params = [f'%{search}%', f'%{search}%']
-            
+            where_clause = "WHERE " + " AND ".join(conditions)
+
             # Get total count
             cursor.execute(f"SELECT COUNT(*) FROM tags {where_clause}", params)
             total_tags = cursor.fetchone()[0]
@@ -1234,10 +1499,11 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT wp_id, author_name, author_email, author_url, content, 
+                SELECT wp_id, author_name, author_email, author_url, content,
                        date_created, status, version, parent_id
-                FROM comments 
+                FROM comments
                 WHERE post_id = ?
+                AND (wp_id, version) IN (SELECT wp_id, MAX(version) FROM comments GROUP BY wp_id)
                 ORDER BY date_created ASC
             """, (wp_id,))
             all_comments = cursor.fetchall()
@@ -1259,11 +1525,10 @@ class DatabaseManager:
                     'replies': []
                 })
             
-            # Build comment hierarchy
-            comment_tree = self._build_comment_tree(comment_dicts)
-            
-            # Flatten the tree for display
-            return self._flatten_comment_tree(comment_tree)
+            # Thread the comments for display. Lossless: every archived comment
+            # is emitted exactly once, even if its parent is missing from this
+            # set (orphaned by version filtering / deletion) or forms a cycle.
+            return self._thread_comments(comment_dicts)
     
     # =============================================================================
     # PRIVATE HELPER METHODS
@@ -1281,52 +1546,34 @@ class DatabaseManager:
         Returns:
             Tuple of (query_string, query_parameters)
         """
-        if search:
-            # Use recursive CTE for search queries
-            query = """
-                WITH RECURSIVE comment_tree AS (
-                    SELECT 
-                        c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
-                        c.date_created, c.status, c.version, c.parent_id, 
-                        p.title as post_title, p.wp_id as post_id,
-                        0 as level,
-                        c.date_created as sort_order
-                    FROM comments c
-                    LEFT JOIN posts p ON c.post_id = p.wp_id
-                    WHERE (c.parent_id = 0 OR c.parent_id IS NULL)
-                    AND (c.author_name LIKE ? OR c.content LIKE ?)
-                    
-                    UNION ALL
-                    
-                    SELECT 
-                        c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
-                        c.date_created, c.status, c.version, c.parent_id, 
-                        p.title as post_title, p.wp_id as post_id,
-                        ct.level + 1,
-                        c.date_created as sort_order
-                    FROM comments c
-                    LEFT JOIN posts p ON c.post_id = p.wp_id
-                    JOIN comment_tree ct ON c.parent_id = ct.wp_id
-                    WHERE (c.author_name LIKE ? OR c.content LIKE ?)
-                )
-                SELECT * FROM comment_tree
-                ORDER BY sort_order DESC, level ASC
-                LIMIT ? OFFSET ?
-            """
-            query_params = [f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%', per_page, offset]
-        else:
-            # Use simple query for better performance
-            query = """
-                SELECT 
-                    c.wp_id, c.author_name, c.author_email, c.author_url, c.content, 
-                    c.date_created, c.status, c.version, c.parent_id, 
-                    p.title as post_title, p.wp_id as post_id
+        # Flat, paginated query for both modes. Search results span many posts, so
+        # a threaded view isn't meaningful — and the old recursive CTE walked the
+        # entire comment forest, which hung on large archives for a broad term
+        # (e.g. ?search=a over 100k+ comments). Levels are computed per page in
+        # _process_comments / _calculate_comment_levels instead.
+        base = """
+                SELECT
+                    c.wp_id, c.author_name, c.author_email, c.author_url, c.content,
+                    c.date_created, c.status, c.version, c.parent_id,
+                    p.title as post_title, COALESCE(c.post_id, p.wp_id) as post_id
                 FROM comments c
                 LEFT JOIN posts p ON c.post_id = p.wp_id
+                    AND (p.wp_id, p.version) IN (SELECT wp_id, MAX(version) FROM posts GROUP BY wp_id)
+                WHERE (c.wp_id, c.version) IN (SELECT wp_id, MAX(version) FROM comments GROUP BY wp_id)
+        """
+        if search:
+            query = base + """
+                AND (c.author_name LIKE ? OR c.content LIKE ?)
                 ORDER BY c.date_created DESC
                 LIMIT ? OFFSET ?
             """
-            query_params = [per_page * 3, offset]  # Get more comments to account for threading
+            query_params = [f'%{search}%', f'%{search}%', per_page, offset]
+        else:
+            query = base + """
+                ORDER BY c.date_created DESC
+                LIMIT ? OFFSET ?
+            """
+            query_params = [per_page, offset]
         
         return query, query_params
     
@@ -1357,53 +1604,63 @@ class DatabaseManager:
                 'post_title': comment[9],
                 'post_id': comment[10]
             })
-        
-        # Calculate levels efficiently for non-search queries
-        if not search:
-            self._calculate_comment_levels(comments)
-        else:
-            # For search queries, use the level from recursive CTE
-            for comment in comments:
-                comment['level'] = comment[11] if len(comment) > 11 else 0
-        
+
+        # Both modes return a flat page; derive each comment's indent level from
+        # the parent chain present within the page (cycle-guarded).
+        self._calculate_comment_levels(comments)
+
         return comments
     
-    def _build_comment_tree(self, comments: List[Dict], parent_id: Optional[int] = None) -> List[Dict]:
+    def _thread_comments(self, comments: List[Dict]) -> List[Dict]:
         """
-        Build a hierarchical comment tree.
-        
+        Order threaded comments for display without losing any.
+
+        Every input comment is emitted exactly once. A comment whose parent_id
+        is absent from this set (orphaned by version filtering or deletion of the
+        parent), self-referential, or part of a cycle is shown as a top-level
+        root instead of being silently dropped. Uses an explicit stack so deeply
+        nested threads can't hit Python's recursion limit. Stored data is never
+        mutated — only the in-memory display order/level.
+
         Args:
-            comments: List of comment dictionaries
-            parent_id: Parent comment ID to filter by
-            
+            comments: Comment dicts (each with a mutable 'replies' list), date-asc
+
         Returns:
-            Hierarchical comment tree
+            Flattened list of comments with a 'level' set for indentation
         """
-        tree = []
-        for comment in comments:
-            if comment['parent_id'] == parent_id:
-                comment['replies'] = self._build_comment_tree(comments, comment['wp_id'])
-                tree.append(comment)
-        return tree
-    
-    def _flatten_comment_tree(self, tree: List[Dict], level: int = 0) -> List[Dict]:
-        """
-        Flatten a comment tree for display (depth-first traversal).
-        
-        Args:
-            tree: Comment tree to flatten
-            level: Current nesting level
-            
-        Returns:
-            Flattened list of comments with levels
-        """
-        flattened = []
-        for comment in tree:
-            comment['level'] = level
-            flattened.append(comment)
-            if comment['replies']:
-                flattened.extend(self._flatten_comment_tree(comment['replies'], level + 1))
-        return flattened
+        by_id = {c['wp_id']: c for c in comments}
+        roots: List[Dict] = []
+        for c in comments:
+            pid = c['parent_id']
+            parent = by_id.get(pid) if pid else None
+            if parent is None or parent is c:
+                # No parent, missing parent (orphan), or self-reference -> root.
+                roots.append(c)
+            else:
+                parent['replies'].append(c)
+
+        ordered: List[Dict] = []
+        visited = set()
+
+        def _emit(seeds: List[Dict]):
+            # Iterative pre-order DFS; reversed() keeps original (date-asc) order.
+            stack = [(node, 0) for node in reversed(seeds)]
+            while stack:
+                node, level = stack.pop()
+                if node['wp_id'] in visited:   # break any parent cycle
+                    continue
+                visited.add(node['wp_id'])
+                node['level'] = level
+                ordered.append(node)
+                for child in reversed(node['replies']):
+                    stack.append((child, level + 1))
+
+        _emit(roots)
+        # Safety net: comments trapped in a pure cycle have no reachable root.
+        for c in comments:
+            if c['wp_id'] not in visited:
+                _emit([c])
+        return ordered
     
     def _calculate_comment_levels(self, comments: List[Dict[str, Any]]):
         """
@@ -1415,8 +1672,10 @@ class DatabaseManager:
         comment_dict = {c['wp_id']: c for c in comments}
         for comment in comments:
             level = 0
+            seen = {comment['wp_id']}   # guard against parent cycles
             current_parent = comment['parent_id']
-            while current_parent and current_parent in comment_dict:
+            while current_parent and current_parent in comment_dict and current_parent not in seen:
                 level += 1
+                seen.add(current_parent)
                 current_parent = comment_dict[current_parent]['parent_id']
             comment['level'] = level 

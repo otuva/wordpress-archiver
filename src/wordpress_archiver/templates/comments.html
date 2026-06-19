@@ -42,7 +42,7 @@
 <div class="row g-4 mb-5">
     {% for comment in comments %}
     <div class="col-12">
-        <div class="card comment-card" style="cursor: pointer;" onclick="window.location.href='{{ url_for('post_detail', wp_id=comment.post_id) }}#comment-{{ comment.wp_id }}'">
+        <div class="card comment-card" style="cursor: pointer;" data-href="{{ url_for('post_detail', wp_id=comment.post_id) }}#comment-{{ comment.wp_id }}">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <div class="d-flex align-items-center gap-3">
                     <span class="badge bg-primary version-badge">v{{ comment.version }}</span>
@@ -67,7 +67,7 @@
                                     {% endif %}
                                 </h6>
                                 {% if comment.author_url %}
-                                    <a href="{{ comment.author_url }}" target="_blank" class="comment-url ms-2" onclick="event.stopPropagation();">
+                                    <a href="{{ comment.author_url }}" target="_blank" class="comment-url ms-2">
                                         <i class="fas fa-external-link-alt"></i>
                                     </a>
                                 {% endif %}
@@ -85,9 +85,8 @@
                                     <i class="fas fa-link me-2"></i>On Post
                                 </h6>
                                 <div class="bg-light p-3 rounded">
-                                    <a href="{{ url_for('post_detail', wp_id=comment.post_id) }}" 
-                                       class="text-decoration-none fw-bold"
-                                       onclick="event.stopPropagation();">
+                                    <a href="{{ url_for('post_detail', wp_id=comment.post_id) }}"
+                                       class="text-decoration-none fw-bold">
                                         {{ comment.post_title | render_html }}
                                     </a>
                                 </div>

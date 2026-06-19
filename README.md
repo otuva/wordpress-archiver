@@ -4,6 +4,12 @@ A comprehensive tool for archiving WordPress content locally using SQLite. This 
 
 ## Features
 
+- **Lossless Archiving**: Stores the complete raw API JSON for every item, downloads all referenced images/PDFs/avatars as BLOBs inside the database, and serves them locally — so the archive stays intact even if the live site disappears
+- **Binary Media Capture**: Every `wp-content/uploads` file, gravatar avatar, and `/wp/v2/media` attachment is downloaded into the single portable `.db` file
+- **Video Archiving** (opt-in): Downloads embedded videos (YouTube/Vimeo/Odysee/…) with `yt-dlp` to a folder beside the database and plays them locally
+- **Full Endpoint Coverage**: Walks the REST discovery index and captures every collection it exposes — custom post types, custom taxonomies, menus, templates, and plugin routes — leaving no gaps
+- **Authenticated Capture** (optional): With a WordPress Application Password, also archives private/draft/protected content, raw fields, user emails, settings, and revisions
+- **Offline Viewer**: Rewrites asset URLs at display time so archived pages render from local media — stored HTML is never modified
 - **Complete Content Archiving**: Archive posts, comments, pages, users, categories, and tags
 - **Post Relationships**: Automatic tracking of post-category and post-tag relationships
 - **Version Control**: Track content changes with automatic versioning
@@ -53,7 +59,8 @@ The tool provides a unified command-line interface with three main commands:
 # Archive all content from a WordPress site
 python main.py archive https://example.com
 
-# Archive only posts with a limit
+# Quick preview run: --limit bounds EVERY phase — content items per type,
+# media downloads, and objects per REST route (omit it for a full archive)
 python main.py archive https://example.com --content-type posts --limit 50
 
 # Archive content after a specific date
@@ -65,6 +72,43 @@ python main.py archive https://example.com --db my_archive.db
 # Enable verbose logging
 python main.py archive https://example.com --verbose
 ```
+
+#### Lossless / Complete Archiving
+
+`archive ... --content-type all` (the default) now also downloads binary media
+and walks every REST endpoint. Extra options:
+
+```bash
+# Default run: posts/comments/pages/users/categories/tags + media + all endpoints
+python main.py archive https://example.com
+
+# Also download embedded videos with yt-dlp (requires yt-dlp; ffmpeg for >720p)
+python main.py archive https://example.com --download-videos
+
+# Skip binary media downloads (text/HTML only)
+python main.py archive https://example.com --no-media
+
+# Skip the REST discovery walk (custom post types, taxonomies, menus, ...)
+python main.py archive https://example.com --no-endpoints
+
+# Capture private/draft/protected content, raw fields, emails, settings, revisions
+python main.py archive https://example.com --auth USERNAME:APPLICATION_PASSWORD
+
+# Download only the media referenced by already-archived content
+python main.py archive https://example.com --content-type media
+```
+
+Notes:
+- Video archiving needs yt-dlp **in this environment**: `pip install -e .[video]`
+  (or follow yt-dlp's [official install](https://github.com/yt-dlp/yt-dlp/wiki/Installation)
+  — pip or the standalone binary). Avoid the snap build: it is sandboxed and
+  silently fails YouTube. `ffmpeg` is required to merge streams above ~720p.
+- Media is stored as BLOBs **inside** the `.db` (single portable file). Videos go
+  to `<db-name>_media/videos/` next to the database (move them together).
+- Re-runs are **incremental and append-only**: new content is added, edited
+  content is versioned, already-downloaded media/videos are skipped, and content
+  removed from the live site is preserved.
+- Captured raw endpoint data is browsable in the web UI under **Raw API** (`/raw`).
 
 #### View Statistics
 
@@ -79,15 +123,24 @@ python main.py stats --db my_archive.db
 #### Start Web Interface
 
 ```bash
-# Start web interface
+# Start web interface (binds 127.0.0.1 — local machine only, by default)
 python main.py web
 
 # Start on custom port
 python main.py web --port 8080
 
+# Expose on your LAN (see warning below)
+python main.py web --host 0.0.0.0
+
 # Start with debug mode
 python main.py web --debug
 ```
+
+> **Security:** the viewer binds `127.0.0.1` by default so the archive is
+> reachable only from the local machine. It serves **all** archived content
+> verbatim — including private/draft posts and user emails captured with
+> `--auth` — and has no authentication of its own. Only pass `--host 0.0.0.0`
+> (or any non-loopback address) on a network you trust.
 
 ### Web Interface
 

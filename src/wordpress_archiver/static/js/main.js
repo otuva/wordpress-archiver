@@ -50,4 +50,30 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+
+    // Make comment cards clickable (replaces inline onclick; clicks on inner
+    // links pass through to their own href instead of navigating the card).
+    document.querySelectorAll('.comment-card[data-href]').forEach(function(card) {
+        card.addEventListener('click', function(e) {
+            if (e.target.closest('a')) {
+                return;
+            }
+            window.location.href = card.getAttribute('data-href');
+        });
+    });
+
+    // Highlight a comment when the page opens with an anchor (e.g. #comment-123).
+    if (window.location.hash) {
+        try {
+            var anchored = document.querySelector(window.location.hash);
+            if (anchored) {
+                anchored.classList.add('highlight');
+                setTimeout(function() {
+                    anchored.classList.remove('highlight');
+                }, 2000);
+            }
+        } catch (err) {
+            /* invalid selector in location.hash — ignore */
+        }
+    }
 }); 

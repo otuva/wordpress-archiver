@@ -28,15 +28,21 @@ class WordPressAPIError(Exception):
 class WordPressAPI:
     """WordPress REST API wrapper with comprehensive error handling."""
     
-    def __init__(self, domain: str, timeout: int = 30):
+    def __init__(self, domain: str, timeout: int = 30,
+                 auth: Optional[tuple] = None):
         """
         Initialize the WordPress API wrapper.
-        
+
         Args:
             domain: The domain name of the WordPress site (e.g., https://example.com)
             timeout: Request timeout in seconds
+            auth: Optional (username, application_password) tuple. When supplied,
+                requests are authenticated (HTTP Basic over HTTPS) and list
+                endpoints request context=edit / status=any so private, draft and
+                protected content (plus raw fields and user emails) are captured.
         """
         self.base_url = f"{domain.rstrip('/')}/wp-json/wp/v2"
+        self.root_url = f"{domain.rstrip('/')}/wp-json"
         self.domain = domain.rstrip('/')
         self.timeout = timeout
         self.headers = {
@@ -45,6 +51,32 @@ class WordPressAPI:
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
+        self.authenticated = bool(auth)
+        if auth:
+            self.session.auth = auth
+
+    def _maybe_auth_params(self, params: Dict[str, Any], status_filter: bool = True) -> Dict[str, Any]:
+        """Add context=edit (and status=any) to list requests when authenticated."""
+        if self.authenticated:
+            params["context"] = "edit"
+            if status_filter:
+                params["status"] = "any"
+        return params
+
+    @staticmethod
+    def _api_error(context: str, exc: Exception) -> 'WordPressAPIError':
+        """Convert a requests exception to a WordPressAPIError without changing message text."""
+        if isinstance(exc, requests.exceptions.Timeout):
+            return WordPressAPIError(f"Request timeout for {context}")
+        if isinstance(exc, requests.exceptions.ConnectionError):
+            return WordPressAPIError(f"Connection error for {context}")
+        if isinstance(exc, requests.exceptions.HTTPError):
+            return WordPressAPIError(f"HTTP error {exc.response.status_code}: {exc.response.text}")
+        if isinstance(exc, requests.exceptions.RequestException):
+            return WordPressAPIError(f"Request failed: {exc}")
+        if isinstance(exc, ValueError):
+            return WordPressAPIError(f"Invalid JSON response: {exc}")
+        return WordPressAPIError(str(exc))
 
     def _make_request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None) -> WordPressResponse:
         """
@@ -75,16 +107,16 @@ class WordPressAPI:
             
             return WordPressResponse(data, total_count, total_pages_count)
             
-        except requests.exceptions.Timeout:
-            raise WordPressAPIError(f"Request timeout for {url}")
-        except requests.exceptions.ConnectionError:
-            raise WordPressAPIError(f"Connection error for {url}")
+        except requests.exceptions.Timeout as e:
+            raise self._api_error(url, e)
+        except requests.exceptions.ConnectionError as e:
+            raise self._api_error(url, e)
         except requests.exceptions.HTTPError as e:
-            raise WordPressAPIError(f"HTTP error {e.response.status_code}: {e.response.text}")
+            raise self._api_error(url, e)
         except requests.exceptions.RequestException as e:
-            raise WordPressAPIError(f"Request failed: {e}")
+            raise self._api_error(url, e)
         except ValueError as e:
-            raise WordPressAPIError(f"Invalid JSON response: {e}")
+            raise self._api_error(url, e)
 
     def get_posts(self, page: int = 1, per_page: int = 10, after: Optional[str] = None) -> WordPressResponse:
         """
@@ -99,15 +131,15 @@ class WordPressAPI:
             WordPressResponse object
         """
         params = {
-            "page": page, 
+            "page": page,
             "per_page": per_page,
-            "orderby": "date", 
+            "orderby": "date",
             "order": "asc"
         }
         if after:
             params["after"] = after
-            
-        return self._make_request("GET", "posts", params=params)
+
+        return self._make_request("GET", "posts", params=self._maybe_auth_params(params))
 
     def get_post(self, post_id: int) -> WordPressResponse:
         """
@@ -136,17 +168,17 @@ class WordPressAPI:
             WordPressResponse object
         """
         params = {
-            "page": page, 
+            "page": page,
             "per_page": per_page,
-            "orderby": "date", 
+            "orderby": "date",
             "order": "asc"
         }
         if post_id:
             params["post"] = post_id
         if after:
             params["after"] = after
-            
-        return self._make_request("GET", "comments", params=params)
+
+        return self._make_request("GET", "comments", params=self._maybe_auth_params(params))
 
     def get_comment(self, comment_id: int) -> WordPressResponse:
         """
@@ -173,15 +205,15 @@ class WordPressAPI:
             WordPressResponse object
         """
         params = {
-            "page": page, 
+            "page": page,
             "per_page": per_page,
-            "orderby": "date", 
+            "orderby": "date",
             "order": "asc"
         }
         if after:
             params["after"] = after
-            
-        return self._make_request("GET", "pages", params=params)
+
+        return self._make_request("GET", "pages", params=self._maybe_auth_params(params))
 
     def get_page(self, page_id: int) -> WordPressResponse:
         """
@@ -210,8 +242,8 @@ class WordPressAPI:
         params = {"page": page, "per_page": per_page}
         if after:
             params["after"] = after
-            
-        return self._make_request("GET", "users", params=params)
+
+        return self._make_request("GET", "users", params=self._maybe_auth_params(params, status_filter=False))
 
     def get_user(self, user_id: int) -> WordPressResponse:
         """
@@ -277,6 +309,88 @@ class WordPressAPI:
         """
         return self._make_request("GET", f"tags/{tag_id}")
 
+    def get_media(self, page: int = 1, per_page: int = 100) -> WordPressResponse:
+        """Retrieve a paginated list of media attachments (/wp/v2/media)."""
+        params = {"page": page, "per_page": per_page}
+        return self._make_request("GET", "media", params=self._maybe_auth_params(params, status_filter=False))
+
+    def _request_full(self, url: str, params: Optional[Dict[str, Any]] = None) -> WordPressResponse:
+        """Make a GET request to an absolute wp-json URL (used for discovery/generic routes)."""
+        try:
+            response = self.session.request("GET", url, params=params, timeout=self.timeout)
+            response.raise_for_status()
+            data = response.json()
+            total_count = int(response.headers.get("X-WP-Total", 0))
+            total_pages_count = int(response.headers.get("X-WP-TotalPages", 1))
+            return WordPressResponse(data, total_count, total_pages_count)
+        except requests.exceptions.Timeout as e:
+            raise self._api_error(url, e)
+        except requests.exceptions.ConnectionError as e:
+            raise self._api_error(url, e)
+        except requests.exceptions.HTTPError as e:
+            raise self._api_error(url, e)
+        except requests.exceptions.RequestException as e:
+            raise self._api_error(url, e)
+        except ValueError as e:
+            raise self._api_error(url, e)
+
+    def get_root(self) -> WordPressResponse:
+        """Fetch the REST API discovery index at /wp-json/ (lists every route)."""
+        return self._request_full(self.root_url)
+
+    def get_json(self, route: str, params: Optional[Dict[str, Any]] = None) -> WordPressResponse:
+        """
+        GET an arbitrary discovered route.
+
+        Args:
+            route: Full route path beginning with '/', e.g. '/wp/v2/menu-items'.
+        """
+        url = f"{self.domain}/wp-json{route}"
+        return self._request_full(url, params=params)
+
+    def download_binary(self, url: str, max_size_bytes: int = 50 * 1024 * 1024) -> tuple:
+        """
+        Download a binary asset.
+
+        Returns:
+            (content_bytes, content_type, http_status). content_bytes is None when
+            the asset exceeds max_size_bytes (caller records it as 'oversized').
+
+        Raises:
+            WordPressAPIError: on network/HTTP failure (caller records 'failed').
+        """
+        try:
+            with self.session.get(url, timeout=self.timeout, stream=True) as response:
+                status = response.status_code
+                response.raise_for_status()
+
+                content_type = response.headers.get("Content-Type", "application/octet-stream")
+                declared = response.headers.get("Content-Length")
+                if declared and int(declared) > max_size_bytes:
+                    response.close()
+                    return None, content_type, status
+
+                chunks = []
+                total = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > max_size_bytes:
+                        response.close()
+                        return None, content_type, status
+                    chunks.append(chunk)
+                return b"".join(chunks), content_type, status
+
+        except requests.exceptions.Timeout:
+            raise WordPressAPIError(f"Request timeout for {url}")
+        except requests.exceptions.ConnectionError:
+            raise WordPressAPIError(f"Connection error for {url}")
+        except requests.exceptions.HTTPError as e:
+            raise WordPressAPIError(f"HTTP error {e.response.status_code} for {url}")
+        except requests.exceptions.RequestException as e:
+            raise WordPressAPIError(f"Request failed for {url}: {e}")
+
     def verify_wordpress_site(self) -> bool:
         """
         Verify that the given site is actually a WordPress site.
@@ -332,7 +446,7 @@ class WordPressAPI:
                     if response.status_code in [200, 403, 401]:
                         logger.info(f"✅ Found WordPress endpoint: {endpoint}")
                         return True
-                except:
+                except requests.exceptions.RequestException:
                     continue
             
             logger.error(f"❌ {self.domain} does not appear to be a WordPress site")
