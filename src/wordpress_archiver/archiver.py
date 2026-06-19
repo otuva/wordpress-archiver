@@ -391,6 +391,18 @@ class WordPressArchiver:
         videos_dir.mkdir(parents=True, exist_ok=True)
         done = self.db.downloaded_video_hashes()
 
+        # Merging separate video+audio streams needs ffmpeg. Without it, fall back
+        # to single-file (progressive) streams so downloads still succeed.
+        has_ffmpeg = shutil.which('ffmpeg') is not None
+        if has_ffmpeg:
+            fmt = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best'
+            merge_args = ['--merge-output-format', 'mp4']
+        else:
+            logger.warning("ffmpeg not found; downloading single-file (progressive) "
+                           "streams only — quality may be capped (~720p).")
+            fmt = 'best[height<=1080][ext=mp4]/best[ext=mp4]/best'
+            merge_args = []
+
         for embed in embeds:
             h = url_hash(normalize_asset_url(embed, site_url))
             if h in done:
@@ -399,17 +411,16 @@ class WordPressArchiver:
             output_template = str(videos_dir / f"{h}.%(ext)s")
             try:
                 result = subprocess.run(
-                    ['yt-dlp',
-                     '-f', 'bestvideo[height<=1080]+bestaudio/best[ext=mp4]/best',
-                     '--merge-output-format', 'mp4',
-                     '--no-playlist', '--no-warnings',
+                    ['yt-dlp', '-f', fmt, *merge_args,
+                     '--no-playlist',
                      '-o', output_template,
-                     '--print', 'after_move:filepath',
+                     # --print implies --simulate; --no-simulate forces the download.
+                     '--print', 'after_move:filepath', '--no-simulate',
                      embed],
                     capture_output=True, text=True, timeout=timeout
                 )
                 if result.returncode != 0:
-                    msg = (result.stderr or '').strip()[:500]
+                    msg = (result.stderr or result.stdout or '').strip()[:500]
                     self.db.insert_video(h, embed, None, None, None, 0, 'failed', msg)
                     stats["failed"] = stats.get("failed", 0) + 1
                     stats["errors"] += 1
@@ -423,7 +434,9 @@ class WordPressArchiver:
                     matches = list(videos_dir.glob(f"{h}.*"))
                     filepath = str(matches[0]) if matches else ''
                 if not filepath or not Path(filepath).exists():
-                    self.db.insert_video(h, embed, None, None, None, 0, 'failed', 'output file not found')
+                    detail = (result.stderr or result.stdout or '').strip()[-300:]
+                    self.db.insert_video(h, embed, None, None, None, 0, 'failed',
+                                         f'output file not found. {detail}')
                     stats["failed"] = stats.get("failed", 0) + 1
                     stats["errors"] += 1
                     continue
@@ -517,6 +530,10 @@ class WordPressArchiver:
                 continue
             last = path.rstrip('/').split('/')[-1]
             if path.startswith('/wp/v2/') and last in TYPED_REST_BASES:
+                continue
+            # 'search' is a query interface that only returns stub pointers to
+            # content we already archive in full — skip it (no losslessness value).
+            if path.startswith('/wp/v2/') and last == 'search':
                 continue
             out.append(path)
         return out
