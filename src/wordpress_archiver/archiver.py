@@ -15,7 +15,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from pathlib import Path
 
-from .api import WordPressAPI, WordPressAPIError
+from .api import WordPressAPI, WordPressAPIError, PERMISSION_DENIED_STATUSES
 from .database import DatabaseManager
 from .content_processor import (
     ContentProcessor,
@@ -695,7 +695,7 @@ class WordPressArchiver:
             except WordPressAPIError as e:
                 if page > 1:
                     break  # later-page failure = end of pagination, not an error
-                if e.status_code in (401, 403):
+                if e.status_code in PERMISSION_DENIED_STATUSES:
                     return 'walled'
                 if e.status_code == 400:
                     return 'param'

@@ -12,6 +12,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# HTTP status classes shared by the retry, endpoint-skip and media-skip logic.
+# Permission errors (401/403) can't change without new credentials; "gone" (404/410)
+# can't change at all — so an identical re-request is futile for either. Transient
+# failures (429, 5xx, timeouts) are deliberately absent and keep being retried.
+PERMISSION_DENIED_STATUSES = (401, 403)
+GONE_STATUSES = (404, 410)
+PERMANENT_FAILURE_STATUSES = PERMISSION_DENIED_STATUSES + GONE_STATUSES
+
 
 @dataclass
 class WordPressResponse:
@@ -60,6 +68,11 @@ class WordPressAPI:
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
+        # Separate pooled session for off-origin media (hotlinked images, CDNs).
+        # It carries NO credentials, so the WP application password is never sent
+        # to third-party hosts — and its connections are reused across downloads.
+        self._anon_session = requests.Session()
+        self._anon_session.headers.update(self.headers)
         self.authenticated = bool(auth)
         if auth:
             self.session.auth = auth
@@ -378,7 +391,7 @@ class WordPressAPI:
                                          params={'page': page, 'per_page': per_page})
                 except WordPressAPIError as e2:
                     e = e2
-            if page == 1 and e.status_code not in (401, 403):
+            if page == 1 and e.status_code not in PERMISSION_DENIED_STATUSES:
                 return self.get_json(route)
             raise e
 
@@ -394,17 +407,16 @@ class WordPressAPI:
             WordPressAPIError: on network/HTTP failure (caller records 'failed').
         """
         # Media comes from arbitrary hosts (hotlinked images, CDNs). Send the WP
-        # credentials only to the site's own origin — never leak them to third
-        # parties. (requests already strips auth on cross-host redirects; this
-        # guards direct off-origin URLs.)
-        same_origin = urlparse(url).netloc == urlparse(self.domain).netloc
+        # credentials only to the site's own origin — same SCHEME and host — so they
+        # never leak to third parties, nor downgrade onto a plaintext http:// URL of
+        # the same host. Everything else uses the credential-free pooled session.
+        target = urlparse(url)
+        origin = urlparse(self.domain)
+        same_origin = ((target.scheme, target.netloc.lower())
+                       == (origin.scheme, origin.netloc.lower()))
+        http = self.session if same_origin else self._anon_session
         try:
-            if same_origin:
-                response = self.session.get(url, timeout=self.timeout, stream=True)
-            else:
-                response = requests.get(url, headers=self.headers,
-                                        timeout=self.timeout, stream=True)
-            with response:
+            with http.get(url, timeout=self.timeout, stream=True) as response:
                 status = response.status_code
                 response.raise_for_status()
 
