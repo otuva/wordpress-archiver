@@ -6,6 +6,7 @@ Provides a clean interface to interact with WordPress REST API endpoints.
 
 import requests
 from typing import Optional, Dict, Any
+from urllib.parse import urlparse
 from dataclasses import dataclass
 import logging
 
@@ -392,8 +393,18 @@ class WordPressAPI:
         Raises:
             WordPressAPIError: on network/HTTP failure (caller records 'failed').
         """
+        # Media comes from arbitrary hosts (hotlinked images, CDNs). Send the WP
+        # credentials only to the site's own origin — never leak them to third
+        # parties. (requests already strips auth on cross-host redirects; this
+        # guards direct off-origin URLs.)
+        same_origin = urlparse(url).netloc == urlparse(self.domain).netloc
         try:
-            with self.session.get(url, timeout=self.timeout, stream=True) as response:
+            if same_origin:
+                response = self.session.get(url, timeout=self.timeout, stream=True)
+            else:
+                response = requests.get(url, headers=self.headers,
+                                        timeout=self.timeout, stream=True)
+            with response:
                 status = response.status_code
                 response.raise_for_status()
 
