@@ -332,7 +332,7 @@ class WordPressAPI:
                     if response.status_code in [200, 403, 401]:
                         logger.info(f"✅ Found WordPress endpoint: {endpoint}")
                         return True
-                except:
+                except requests.exceptions.RequestException:
                     continue
             
             logger.error(f"❌ {self.domain} does not appear to be a WordPress site")

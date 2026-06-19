@@ -516,6 +516,7 @@ class DatabaseManager:
                 SELECT wp_id, name, description, link, slug, taxonomy, parent, count
                 FROM categories
                 WHERE wp_id IN ({placeholders})
+                AND (wp_id, version) IN (SELECT wp_id, MAX(version) FROM categories GROUP BY wp_id)
                 ORDER BY name ASC
             ''', category_ids)
             
@@ -572,6 +573,7 @@ class DatabaseManager:
                 SELECT wp_id, name, description, link, slug, taxonomy, count
                 FROM tags
                 WHERE wp_id IN ({placeholders})
+                AND (wp_id, version) IN (SELECT wp_id, MAX(version) FROM tags GROUP BY wp_id)
                 ORDER BY name ASC
             ''', tag_ids)
             
@@ -610,7 +612,7 @@ class DatabaseManager:
             cursor.execute('''
                 SELECT COUNT(DISTINCT p.wp_id)
                 FROM posts p
-                INNER JOIN post_categories pc ON p.wp_id = pc.post_wp_id
+                INNER JOIN post_categories pc ON p.wp_id = pc.post_wp_id AND pc.version = p.version
                 WHERE pc.category_wp_id = ?
                 AND p.version = (
                     SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
@@ -624,7 +626,7 @@ class DatabaseManager:
                        p.date_created, p.date_modified, p.status, p.version, p.created_at,
                        COALESCE(u.name, 'Unknown') as author_name
                 FROM posts p
-                INNER JOIN post_categories pc ON p.wp_id = pc.post_wp_id
+                INNER JOIN post_categories pc ON p.wp_id = pc.post_wp_id AND pc.version = p.version
                 LEFT JOIN users u ON p.author_id = u.wp_id AND u.version = (
                     SELECT MAX(version) FROM users WHERE wp_id = u.wp_id
                 )
@@ -661,7 +663,7 @@ class DatabaseManager:
             cursor.execute('''
                 SELECT COUNT(DISTINCT p.wp_id)
                 FROM posts p
-                INNER JOIN post_tags pt ON p.wp_id = pt.post_wp_id
+                INNER JOIN post_tags pt ON p.wp_id = pt.post_wp_id AND pt.version = p.version
                 WHERE pt.tag_wp_id = ?
                 AND p.version = (
                     SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
@@ -675,7 +677,7 @@ class DatabaseManager:
                        p.date_created, p.date_modified, p.status, p.version, p.created_at,
                        COALESCE(u.name, 'Unknown') as author_name
                 FROM posts p
-                INNER JOIN post_tags pt ON p.wp_id = pt.post_wp_id
+                INNER JOIN post_tags pt ON p.wp_id = pt.post_wp_id AND pt.version = p.version
                 LEFT JOIN users u ON p.author_id = u.wp_id AND u.version = (
                     SELECT MAX(version) FROM users WHERE wp_id = u.wp_id
                 )
@@ -857,7 +859,7 @@ class DatabaseManager:
             stats = {}
             
             for table in tables:
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                cursor.execute(f"SELECT COUNT(DISTINCT wp_id) FROM {table}")
                 stats[f'total_{table}'] = cursor.fetchone()[0]
             
             # Get session statistics
@@ -916,13 +918,14 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Build search query
-            where_clause = ""
+            # Build search query (restricted to the latest version of each post)
+            conditions = ["(p.wp_id, p.version) IN (SELECT wp_id, MAX(version) FROM posts GROUP BY wp_id)"]
             params = []
             if search:
-                where_clause = "WHERE p.title LIKE ? OR p.content LIKE ?"
+                conditions.append("(p.title LIKE ? OR p.content LIKE ?)")
                 params = [f'%{search}%', f'%{search}%']
-            
+            where_clause = "WHERE " + " AND ".join(conditions)
+
             # Get total count
             count_query = f"SELECT COUNT(*) FROM posts p {where_clause}"
             cursor.execute(count_query, params)
@@ -969,13 +972,14 @@ class DatabaseManager:
             conn.execute("PRAGMA cache_size = 10000")
             conn.execute("PRAGMA synchronous = NORMAL")
             
-            # Build search query
-            where_clause = ""
+            # Build search query (restricted to the latest version of each comment)
+            conditions = ["(c.wp_id, c.version) IN (SELECT wp_id, MAX(version) FROM comments GROUP BY wp_id)"]
             params = []
             if search:
-                where_clause = "WHERE c.author_name LIKE ? OR c.content LIKE ?"
+                conditions.append("(c.author_name LIKE ? OR c.content LIKE ?)")
                 params = [f'%{search}%', f'%{search}%']
-            
+            where_clause = "WHERE " + " AND ".join(conditions)
+
             # Get total count
             cursor.execute(f"SELECT COUNT(*) FROM comments c {where_clause}", params)
             total_comments = cursor.fetchone()[0]
@@ -1010,13 +1014,14 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Build search query
-            where_clause = ""
+            # Build search query (restricted to the latest version of each page)
+            conditions = ["(wp_id, version) IN (SELECT wp_id, MAX(version) FROM pages GROUP BY wp_id)"]
             params = []
             if search:
-                where_clause = "WHERE title LIKE ? OR content LIKE ?"
+                conditions.append("(title LIKE ? OR content LIKE ?)")
                 params = [f'%{search}%', f'%{search}%']
-            
+            where_clause = "WHERE " + " AND ".join(conditions)
+
             # Get total count
             cursor.execute(f"SELECT COUNT(*) FROM pages {where_clause}", params)
             total_pages_count = cursor.fetchone()[0]
@@ -1053,13 +1058,14 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Build search query
-            where_clause = ""
+            # Build search query (restricted to the latest version of each user)
+            conditions = ["(wp_id, version) IN (SELECT wp_id, MAX(version) FROM users GROUP BY wp_id)"]
             params = []
             if search:
-                where_clause = "WHERE name LIKE ? OR description LIKE ?"
+                conditions.append("(name LIKE ? OR description LIKE ?)")
                 params = [f'%{search}%', f'%{search}%']
-            
+            where_clause = "WHERE " + " AND ".join(conditions)
+
             # Get total count
             cursor.execute(f"SELECT COUNT(*) FROM users {where_clause}", params)
             total_users = cursor.fetchone()[0]
@@ -1096,13 +1102,14 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Build search query
-            where_clause = ""
+            # Build search query (restricted to the latest version of each category)
+            conditions = ["(wp_id, version) IN (SELECT wp_id, MAX(version) FROM categories GROUP BY wp_id)"]
             params = []
             if search:
-                where_clause = "WHERE name LIKE ? OR description LIKE ?"
+                conditions.append("(name LIKE ? OR description LIKE ?)")
                 params = [f'%{search}%', f'%{search}%']
-            
+            where_clause = "WHERE " + " AND ".join(conditions)
+
             # Get total count
             cursor.execute(f"SELECT COUNT(*) FROM categories {where_clause}", params)
             total_categories = cursor.fetchone()[0]
@@ -1139,13 +1146,14 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Build search query
-            where_clause = ""
+            # Build search query (restricted to the latest version of each tag)
+            conditions = ["(wp_id, version) IN (SELECT wp_id, MAX(version) FROM tags GROUP BY wp_id)"]
             params = []
             if search:
-                where_clause = "WHERE name LIKE ? OR description LIKE ?"
+                conditions.append("(name LIKE ? OR description LIKE ?)")
                 params = [f'%{search}%', f'%{search}%']
-            
+            where_clause = "WHERE " + " AND ".join(conditions)
+
             # Get total count
             cursor.execute(f"SELECT COUNT(*) FROM tags {where_clause}", params)
             total_tags = cursor.fetchone()[0]
@@ -1234,10 +1242,11 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT wp_id, author_name, author_email, author_url, content, 
+                SELECT wp_id, author_name, author_email, author_url, content,
                        date_created, status, version, parent_id
-                FROM comments 
+                FROM comments
                 WHERE post_id = ?
+                AND (wp_id, version) IN (SELECT wp_id, MAX(version) FROM comments GROUP BY wp_id)
                 ORDER BY date_created ASC
             """, (wp_id,))
             all_comments = cursor.fetchall()
@@ -1293,7 +1302,9 @@ class DatabaseManager:
                         c.date_created as sort_order
                     FROM comments c
                     LEFT JOIN posts p ON c.post_id = p.wp_id
+                        AND (p.wp_id, p.version) IN (SELECT wp_id, MAX(version) FROM posts GROUP BY wp_id)
                     WHERE (c.parent_id = 0 OR c.parent_id IS NULL)
+                    AND (c.wp_id, c.version) IN (SELECT wp_id, MAX(version) FROM comments GROUP BY wp_id)
                     AND (c.author_name LIKE ? OR c.content LIKE ?)
                     
                     UNION ALL
@@ -1306,8 +1317,10 @@ class DatabaseManager:
                         c.date_created as sort_order
                     FROM comments c
                     LEFT JOIN posts p ON c.post_id = p.wp_id
+                        AND (p.wp_id, p.version) IN (SELECT wp_id, MAX(version) FROM posts GROUP BY wp_id)
                     JOIN comment_tree ct ON c.parent_id = ct.wp_id
-                    WHERE (c.author_name LIKE ? OR c.content LIKE ?)
+                    WHERE (c.wp_id, c.version) IN (SELECT wp_id, MAX(version) FROM comments GROUP BY wp_id)
+                    AND (c.author_name LIKE ? OR c.content LIKE ?)
                 )
                 SELECT * FROM comment_tree
                 ORDER BY sort_order DESC, level ASC
@@ -1323,10 +1336,12 @@ class DatabaseManager:
                     p.title as post_title, p.wp_id as post_id
                 FROM comments c
                 LEFT JOIN posts p ON c.post_id = p.wp_id
+                    AND (p.wp_id, p.version) IN (SELECT wp_id, MAX(version) FROM posts GROUP BY wp_id)
+                WHERE (c.wp_id, c.version) IN (SELECT wp_id, MAX(version) FROM comments GROUP BY wp_id)
                 ORDER BY c.date_created DESC
                 LIMIT ? OFFSET ?
             """
-            query_params = [per_page * 3, offset]  # Get more comments to account for threading
+            query_params = [per_page, offset]
         
         return query, query_params
     
