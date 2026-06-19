@@ -227,13 +227,17 @@ class WordPressArchiver:
     # =========================================================================
 
     def _scan_content_for_urls(self, api: Optional[WordPressAPI] = None,
-                               limit: Optional[int] = None) -> set:
+                               limit: Optional[int] = None,
+                               walk_media: bool = True) -> set:
         """Collect every archivable asset URL referenced anywhere in the archive.
 
         Scans ALL versions of every content row (old versions reference assets
-        too), user avatars, and — when an API client is given — the authoritative
-        /wp/v2/media attachment list. ``limit`` bounds the /wp/v2/media walk for
-        quick preview runs (the local content/avatar scan is always full).
+        too), user avatars, and — when an API client is given and ``walk_media``
+        is set — the authoritative /wp/v2/media attachment list. ``limit`` bounds
+        that /wp/v2/media walk for quick preview runs (the local content/avatar
+        scan is always full). Pass ``walk_media=False`` to get ONLY the assets
+        referenced by archived content + avatars (the set a preview must download
+        in full so it renders), leaving the broad library walk to the caller.
         """
         site_url = self.db.get_meta('site_url') or (api.domain if api else None)
         urls: set = set()
@@ -277,7 +281,7 @@ class WordPressArchiver:
                             if norm and is_archivable_asset(norm):
                                 urls.add(norm)
 
-        if api:
+        if api and walk_media:
             urls |= self._scan_media_endpoint(api, site_url, limit=limit)
 
         return urls
@@ -324,33 +328,30 @@ class WordPressArchiver:
 
         Incremental: URLs already present are skipped. Failures and oversized
         files are recorded (not raised) so a single bad asset never aborts a run.
-        ``limit`` caps the number of NEW assets downloaded (and the media-list
-        walk) so a preview run stays small; a full run (limit=None) gets all.
+
+        ``limit`` bounds ONLY the broad ``/wp/v2/media`` library-discovery walk
+        (a preview convenience). Every asset actually referenced by the archived
+        content — plus user avatars — is ALWAYS downloaded in full, so even a
+        ``--limit`` preview renders its captured pages correctly instead of
+        spending the whole budget on unrelated library files. A full run
+        (limit=None) downloads everything regardless.
         """
         stats = _new_stats(discovered=0, downloaded=0, skipped=0, oversized=0)
-        all_urls = self._scan_content_for_urls(api, limit=limit)
-        stats["discovered"] = len(all_urls)
+        site_url = self.db.get_meta('site_url') or (api.domain if api else None)
         known = self.db.media_url_hashes()
 
-        # Count against a deterministic slice of the discovered URLs (sorted), so a
-        # repeated `--limit N` run converges on the same ~N assets instead of
-        # fetching a fresh N each time. A full run (limit=None) takes everything.
-        considered = 0
-        for url in sorted(all_urls):
-            if limit and considered >= limit:
-                break
-            considered += 1
+        def _fetch(url: str) -> None:
             h = url_hash(url)
             if h in known:
                 stats["skipped"] += 1
-                continue
+                return
             try:
                 content, content_type, http_status = api.download_binary(url, max_size_bytes)
                 if content is None:
                     self.db.insert_media(h, url, None, None, content_type, 'oversized', http_status)
                     stats["oversized"] += 1
                     logger.warning(f"Oversized media skipped: {url}")
-                    continue
+                    return
                 content_hash = hashlib.sha256(content).hexdigest()
                 mime = (content_type or 'application/octet-stream').split(';')[0].strip()
                 self.db.insert_media(h, url, content, content_hash, mime, 'ok', http_status)
@@ -367,6 +368,28 @@ class WordPressArchiver:
                 stats["failed"] = stats.get("failed", 0) + 1
                 stats["errors"] += 1
                 logger.warning(f"Error downloading {url}: {e}")
+
+        # Assets referenced by archived content (+ avatars): always fetched in
+        # full so a limited preview still renders.
+        referenced = self._scan_content_for_urls(api, walk_media=False)
+        # The broad media-library walk is the only part `limit` bounds. Drop URLs
+        # already covered by `referenced` so they don't consume the library cap.
+        library = self._scan_media_endpoint(api, site_url, limit=limit) if api else set()
+        library -= referenced
+        stats["discovered"] = len(referenced) + len(library)
+
+        for url in sorted(referenced):
+            _fetch(url)
+
+        # Cap only the library walk. `considered` counts every URL examined
+        # (including already-known skips) so repeated `--limit N` runs converge
+        # on the same deterministic slice instead of fetching a fresh N each time.
+        considered = 0
+        for url in sorted(library):
+            if limit and considered >= limit:
+                break
+            considered += 1
+            _fetch(url)
 
         stats["processed"] = stats["discovered"]
         logger.info(

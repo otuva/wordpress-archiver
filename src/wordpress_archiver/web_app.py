@@ -306,24 +306,27 @@ def post_detail(wp_id):
         version: Specific version to display
     """
     version = request.args.get('version', type=int)
-    
+
     db = get_db_manager()
-    
-    # Get post versions
-    if version:
-        post_versions = db.get_content_versions('posts', wp_id)
-        post_versions = [p for p in post_versions if p['version'] == version]
-    else:
-        post_versions = db.get_content_versions('posts', wp_id)
-    
+
+    # Always load the full version history so the version switcher stays
+    # available. When a specific version is requested, surface it as the
+    # displayed one (post_versions[0]) without dropping the other versions
+    # the switcher needs to navigate between them.
+    post_versions = db.get_content_versions('posts', wp_id)
     if not post_versions:
         return "Post not found", 404
-    
+    if version:
+        selected = [p for p in post_versions if p['version'] == version]
+        if selected:
+            others = [p for p in post_versions if p['version'] != version]
+            post_versions = selected + others
+
     # Get comments for this post
     comments = db.get_post_comments(wp_id)
-    
-    # Get categories and tags for the post (use selected version or latest)
-    post_version = version if version else (post_versions[0]['version'] if post_versions else None)
+
+    # Get categories and tags for the displayed (front) version.
+    post_version = post_versions[0]['version']
     categories = db.get_post_categories(wp_id, post_version)
     tags = db.get_post_tags(wp_id, post_version)
     

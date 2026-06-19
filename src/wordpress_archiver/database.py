@@ -975,10 +975,10 @@ class DatabaseManager:
             # Get total count of posts by this author
             cursor.execute('''
                 SELECT COUNT(*)
-                FROM posts
-                WHERE author_id = ?
-                AND version = (
-                    SELECT MAX(version) FROM posts WHERE wp_id = posts.wp_id
+                FROM posts p
+                WHERE p.author_id = ?
+                AND p.version = (
+                    SELECT MAX(version) FROM posts WHERE wp_id = p.wp_id
                 )
             ''', (author_id,))
             total_posts = cursor.fetchone()[0]
