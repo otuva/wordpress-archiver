@@ -35,6 +35,11 @@
                             <i class="fas fa-folder"></i> Categories
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if request.endpoint and request.endpoint.startswith('raw') }}" href="{{ url_for('raw_endpoints') }}">
+                            <i class="fas fa-code"></i> Raw API
+                        </a>
+                    </li>
                 </ul>
                 <form class="d-flex search-box" method="GET" action="{{ url_for('posts') }}">
                     <input class="form-control me-2" type="search" name="search" placeholder="Search content..." 

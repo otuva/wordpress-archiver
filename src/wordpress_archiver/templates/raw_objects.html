@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}{{ endpoint }} - Raw API Objects - WordPress Archive Viewer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('raw_endpoints') }}">
+                        <i class="fas fa-code"></i> Raw API
+                    </a>
+                </li>
+                <li class="breadcrumb-item active">{{ endpoint }}</li>
+            </ol>
+        </nav>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>
+                <i class="fas fa-database"></i> {{ endpoint }}
+                <span class="badge bg-primary">{{ total }} objects</span>
+            </h1>
+        </div>
+    </div>
+</div>
+
+{% if objects %}
+<div class="row">
+    {% for obj in objects %}
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>
+                    <strong>ID:</strong> {{ obj.wp_id }}
+                    <span class="badge bg-secondary ms-2">v{{ obj.version }}</span>
+                </span>
+                <small class="text-muted">{{ obj.fetched_at or '' }}</small>
+            </div>
+            <div class="card-body">
+                <pre style="max-height: 500px; overflow-y: auto; background: #f8f9fa; padding: 1rem; border-radius: 0.25rem; font-size: 0.8rem;"><code>{{ obj.pretty_json }}</code></pre>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<nav aria-label="Pagination">
+    <ul class="pagination justify-content-center">
+        {% if page > 1 %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('raw_objects', endpoint=endpoint, page=page-1, per_page=per_page) }}">
+                <i class="fas fa-chevron-left"></i> Previous
+            </a>
+        </li>
+        {% endif %}
+
+        {% if page > 3 %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('raw_objects', endpoint=endpoint, page=1, per_page=per_page) }}">1</a>
+        </li>
+        {% if page > 4 %}
+        <li class="page-item disabled">
+            <span class="page-link">...</span>
+        </li>
+        {% endif %}
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+            <li class="page-item active">
+                <span class="page-link">{{ p }}</span>
+            </li>
+            {% elif p <= page + 2 and p >= page - 2 %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('raw_objects', endpoint=endpoint, page=p, per_page=per_page) }}">{{ p }}</a>
+            </li>
+            {% endif %}
+        {% endfor %}
+
+        {% if page < total_pages - 2 %}
+        {% if page < total_pages - 3 %}
+        <li class="page-item disabled">
+            <span class="page-link">...</span>
+        </li>
+        {% endif %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('raw_objects', endpoint=endpoint, page=total_pages, per_page=per_page) }}">{{ total_pages }}</a>
+        </li>
+        {% endif %}
+
+        {% if page < total_pages %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('raw_objects', endpoint=endpoint, page=page+1, per_page=per_page) }}">
+                Next <i class="fas fa-chevron-right"></i>
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-info text-center">
+            <i class="fas fa-info-circle"></i> No objects found for endpoint "{{ endpoint }}".
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

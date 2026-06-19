@@ -110,12 +110,22 @@ def archive_command(args):
             logger.error(f"❌ {e}")
             sys.exit(1)
     
+    # Parse optional authentication (Application Password)
+    auth = None
+    if getattr(args, 'auth', None):
+        if ':' not in args.auth:
+            logger.error("❌ --auth must be in the form USER:APP_PASSWORD")
+            sys.exit(1)
+        user, password = args.auth.split(':', 1)
+        auth = (user, password)
+        logger.info(f"🔐 Authenticating as '{user}' (private/draft/raw content enabled)")
+
     # Initialize archiver
     archiver = WordPressArchiver(args.db)
-    
+
     # Initialize API and verify WordPress site
     try:
-        with WordPressAPI(args.domain) as api:
+        with WordPressAPI(args.domain, auth=auth) as api:
             logger.info(f"Connecting to WordPress site: {args.domain}")
             
             # Verify that it's actually a WordPress site
@@ -129,46 +139,68 @@ def archive_command(args):
                 archiver.save_failed_verification(args.domain, "Not a WordPress site")
                 sys.exit(1)
             
+            # Record the site URL so display-time URL rewriting can resolve
+            # relative asset references to the same hash used at download time.
+            archiver.db.set_meta('site_url', api.domain)
+
             # Determine content types to archive
             content_types = _get_content_types(args.content_type)
-            
+            if args.no_media and 'media' in content_types:
+                content_types = [c for c in content_types if c != 'media']
+            if args.no_endpoints and 'endpoints' in content_types:
+                content_types = [c for c in content_types if c != 'endpoints']
+
             logger.info(f"🚀 Starting archive operation for: {args.domain}")
             logger.info(f"📋 Content types to archive: {', '.join(content_types)}")
             if args.limit:
                 logger.info(f"🔢 Processing limit: {args.limit} items per type")
-            
+
             logger.info("=" * 60)
-            
+
             # Archive each content type
             all_stats = {}
             for content_type in content_types:
                 try:
                     logger.info(f"Archiving {content_type}...")
-                    stats = archiver.archive_content(
-                        api, 
-                        content_type, 
-                        limit=args.limit,
-                        after_date=after_date
-                    )
+                    if content_type == 'media':
+                        stats = archiver.archive_media(api)
+                    elif content_type == 'endpoints':
+                        stats = archiver.archive_all_endpoints(api)
+                    else:
+                        stats = archiver.archive_content(
+                            api,
+                            content_type,
+                            limit=args.limit,
+                            after_date=after_date
+                        )
                     all_stats[content_type] = stats
-                    
+
                     # Log results
-                    if stats['new'] > 0:
+                    if stats.get('new', 0) > 0:
                         logger.info(f"✅ New {content_type}: {stats['new']}")
-                    if stats['updated'] > 0:
+                    if stats.get('updated', 0) > 0:
                         logger.info(f"🔄 Updated {content_type}: {stats['updated']}")
-                    if stats['errors'] > 0:
+                    if stats.get('errors', 0) > 0:
                         logger.warning(f"⚠️  Errors in {content_type}: {stats['errors']}")
-                    
+
                 except Exception as e:
                     logger.error(f"❌ Error archiving {content_type}: {e}")
                     all_stats[content_type] = {
                         'processed': 0, 'new': 0, 'updated': 0, 'errors': 1
                     }
-            
+
+            # Download videos with yt-dlp (opt-in)
+            if args.download_videos:
+                try:
+                    logger.info("🎬 Downloading video embeds with yt-dlp...")
+                    all_stats['videos'] = archiver.archive_videos(api, args.db)
+                except Exception as e:
+                    logger.error(f"❌ Error downloading videos: {e}")
+                    all_stats['videos'] = {'processed': 0, 'new': 0, 'updated': 0, 'errors': 1}
+
             # Save comprehensive session stats
             archiver.save_comprehensive_session(
-                args.domain, content_types, all_stats
+                args.domain, list(all_stats.keys()), all_stats
             )
             
             logger.info("\n🎉 Archive completed! Database: " + args.db)
@@ -210,7 +242,14 @@ def stats_command(args):
         for content_type in ['posts', 'comments', 'pages', 'users', 'categories', 'tags']:
             count = stats.get(f'total_{content_type}', 0)
             print(f"📝 {content_type.title()}: {count:,}")
-        
+
+        print()
+
+        # Lossless-archive stores
+        print(f"🖼️  Media assets stored: {stats.get('total_media', 0):,}")
+        print(f"🎬 Videos downloaded: {stats.get('total_videos', 0):,}")
+        print(f"🧩 Other API objects: {stats.get('total_api_objects', 0):,}")
+
         print()
         
         # Session statistics
@@ -280,7 +319,10 @@ def _get_content_types(content_type: str) -> list:
         List of content types to process
     """
     if content_type == "all":
-        return ["posts", "comments", "pages", "users", "categories", "tags"]
+        # 'media' runs after the text types (it scans their content for URLs);
+        # 'endpoints' captures everything else the REST index exposes.
+        return ["posts", "comments", "pages", "users", "categories", "tags",
+                "media", "endpoints"]
     else:
         return [content_type]
 
@@ -330,7 +372,8 @@ Examples:
     )
     archive_parser.add_argument(
         '--content-type', '-t',
-        choices=["posts", "comments", "pages", "users", "categories", "tags", "all"],
+        choices=["posts", "comments", "pages", "users", "categories", "tags",
+                 "media", "endpoints", "all"],
         default="all",
         help="Content type to archive (default: all)"
     )
@@ -338,6 +381,27 @@ Examples:
         '--limit', '-l',
         type=int,
         help="Limit number of items to archive per content type"
+    )
+    archive_parser.add_argument(
+        '--no-media',
+        action='store_true',
+        help="Skip downloading binary media assets (images/PDFs/avatars)"
+    )
+    archive_parser.add_argument(
+        '--no-endpoints',
+        action='store_true',
+        help="Skip the REST discovery walk (custom post types, taxonomies, menus, ...)"
+    )
+    archive_parser.add_argument(
+        '--download-videos',
+        action='store_true',
+        help="Download video embeds with yt-dlp to <db>_media/videos/ (needs yt-dlp + ffmpeg)"
+    )
+    archive_parser.add_argument(
+        '--auth',
+        metavar='USER:APP_PASSWORD',
+        help="WordPress Application Password (user:password) to also capture "
+             "private/draft/protected content, raw fields, user emails and settings"
     )
     archive_parser.add_argument(
         '--after-date', '-a',
