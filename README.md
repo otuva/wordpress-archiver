@@ -98,6 +98,10 @@ python main.py archive https://example.com --content-type media
 ```
 
 Notes:
+- Video archiving needs yt-dlp **in this environment**: `pip install -e .[video]`
+  (or follow yt-dlp's [official install](https://github.com/yt-dlp/yt-dlp/wiki/Installation)
+  — pip or the standalone binary). Avoid the snap build: it is sandboxed and
+  silently fails YouTube. `ffmpeg` is required to merge streams above ~720p.
 - Media is stored as BLOBs **inside** the `.db` (single portable file). Videos go
   to `<db-name>_media/videos/` next to the database (move them together).
 - Re-runs are **incremental and append-only**: new content is added, edited
