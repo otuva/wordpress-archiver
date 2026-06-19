@@ -97,6 +97,34 @@ def inject_current_year():
     return {'current_year': datetime.now().year}
 
 # =============================================================================
+# SECURITY HEADERS
+# =============================================================================
+
+# Content Security Policy: archived HTML is stored and served verbatim, but the
+# browser must never EXECUTE script it contains. script-src is locked to 'self'
+# (only our own vendored JS), so inline <script>, javascript: URLs and on*=
+# handlers coming from arbitrary archived sites are inert. Inline styles, images,
+# fonts and iframe embeds stay allowed so archived content renders faithfully.
+CSP_POLICY = "; ".join([
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com",
+    "img-src * data:",
+    "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:",
+    "frame-src *",
+    "object-src 'none'",
+    "base-uri 'self'",
+])
+
+
+@app.after_request
+def set_security_headers(response):
+    """Attach a CSP that neutralizes any script embedded in archived content."""
+    response.headers['Content-Security-Policy'] = CSP_POLICY
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+# =============================================================================
 # ROUTE HANDLERS - MAIN PAGES
 # =============================================================================
 
