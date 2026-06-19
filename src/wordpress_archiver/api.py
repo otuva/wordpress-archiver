@@ -21,8 +21,16 @@ class WordPressResponse:
 
 
 class WordPressAPIError(Exception):
-    """Custom exception for WordPress API errors."""
-    pass
+    """Custom exception for WordPress API errors.
+
+    ``status_code`` carries the HTTP status when the failure was an HTTP error
+    response (None for timeouts, connection errors, and invalid JSON), so callers
+    can branch on it instead of parsing the message string.
+    """
+
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class WordPressAPI:
@@ -71,7 +79,9 @@ class WordPressAPI:
         if isinstance(exc, requests.exceptions.ConnectionError):
             return WordPressAPIError(f"Connection error for {context}")
         if isinstance(exc, requests.exceptions.HTTPError):
-            return WordPressAPIError(f"HTTP error {exc.response.status_code}: {exc.response.text}")
+            return WordPressAPIError(
+                f"HTTP error {exc.response.status_code}: {exc.response.text}",
+                status_code=exc.response.status_code)
         if isinstance(exc, requests.exceptions.RequestException):
             return WordPressAPIError(f"Request failed: {exc}")
         if isinstance(exc, ValueError):
@@ -107,15 +117,9 @@ class WordPressAPI:
             
             return WordPressResponse(data, total_count, total_pages_count)
             
-        except requests.exceptions.Timeout as e:
-            raise self._api_error(url, e)
-        except requests.exceptions.ConnectionError as e:
-            raise self._api_error(url, e)
-        except requests.exceptions.HTTPError as e:
-            raise self._api_error(url, e)
-        except requests.exceptions.RequestException as e:
-            raise self._api_error(url, e)
-        except ValueError as e:
+        except (requests.exceptions.RequestException, ValueError) as e:
+            # Timeout/ConnectionError/HTTPError are RequestException subclasses;
+            # _api_error dispatches on the concrete type (and attaches status_code).
             raise self._api_error(url, e)
 
     def get_posts(self, page: int = 1, per_page: int = 10, after: Optional[str] = None) -> WordPressResponse:
@@ -323,15 +327,9 @@ class WordPressAPI:
             total_count = int(response.headers.get("X-WP-Total", 0))
             total_pages_count = int(response.headers.get("X-WP-TotalPages", 1))
             return WordPressResponse(data, total_count, total_pages_count)
-        except requests.exceptions.Timeout as e:
-            raise self._api_error(url, e)
-        except requests.exceptions.ConnectionError as e:
-            raise self._api_error(url, e)
-        except requests.exceptions.HTTPError as e:
-            raise self._api_error(url, e)
-        except requests.exceptions.RequestException as e:
-            raise self._api_error(url, e)
-        except ValueError as e:
+        except (requests.exceptions.RequestException, ValueError) as e:
+            # Timeout/ConnectionError/HTTPError are RequestException subclasses;
+            # _api_error dispatches on the concrete type (and attaches status_code).
             raise self._api_error(url, e)
 
     def get_root(self) -> WordPressResponse:
@@ -347,6 +345,41 @@ class WordPressAPI:
         """
         url = f"{self.domain}/wp-json{route}"
         return self._request_full(url, params=params)
+
+    def get_route_page(self, route: str, page: int = 1,
+                       per_page: int = 100) -> WordPressResponse:
+        """GET one page of a discovered collection route, with graceful fallback.
+
+        Reuses ``_maybe_auth_params`` for the ``context=edit`` scope so the magic
+        param lives in one place. Fallbacks, in order:
+
+        - Authenticated and the edit-scoped request fails: retry without the edit
+          params, so a route we can read in *view* scope but not *edit* still gets
+          archived (no content dropped).
+        - On page 1, if it still fails with anything other than a permission error,
+          make one bare attempt with no params — a route may reject ``?page`` /
+          ``per_page`` (400) or even crash on them (5xx) yet return fine when asked
+          plainly, and we must not lose that content.
+
+        The one failure we never retry is ``401/403``: auth is decided before query
+        params, so an identical request can't change the outcome. Definitive failures
+        are raised with ``status_code`` set for the caller to classify (permission-
+        walled vs param vs real error).
+        """
+        params = self._maybe_auth_params({'page': page, 'per_page': per_page},
+                                         status_filter=False)
+        try:
+            return self.get_json(route, params=params)
+        except WordPressAPIError as e:
+            if self.authenticated:
+                try:
+                    return self.get_json(route,
+                                         params={'page': page, 'per_page': per_page})
+                except WordPressAPIError as e2:
+                    e = e2
+            if page == 1 and e.status_code not in (401, 403):
+                return self.get_json(route)
+            raise e
 
     def download_binary(self, url: str, max_size_bytes: int = 50 * 1024 * 1024) -> tuple:
         """
@@ -382,14 +415,10 @@ class WordPressAPI:
                     chunks.append(chunk)
                 return b"".join(chunks), content_type, status
 
-        except requests.exceptions.Timeout:
-            raise WordPressAPIError(f"Request timeout for {url}")
-        except requests.exceptions.ConnectionError:
-            raise WordPressAPIError(f"Connection error for {url}")
-        except requests.exceptions.HTTPError as e:
-            raise WordPressAPIError(f"HTTP error {e.response.status_code} for {url}")
         except requests.exceptions.RequestException as e:
-            raise WordPressAPIError(f"Request failed for {url}: {e}")
+            # Timeout/ConnectionError/HTTPError are all RequestException subclasses;
+            # _api_error is the single conversion point and attaches status_code.
+            raise self._api_error(url, e)
 
     def verify_wordpress_site(self) -> bool:
         """

@@ -165,7 +165,9 @@ def archive_command(args):
                     if content_type == 'media':
                         stats = archiver.archive_media(api, limit=args.limit)
                     elif content_type == 'endpoints':
-                        stats = archiver.archive_all_endpoints(api, limit=args.limit)
+                        stats = archiver.archive_all_endpoints(
+                            api, limit=args.limit,
+                            recheck_permissions=args.recheck_permissions)
                     else:
                         stats = archiver.archive_content(
                             api,
@@ -180,6 +182,8 @@ def archive_command(args):
                         logger.info(f"✅ New {content_type}: {stats['new']}")
                     if stats.get('updated', 0) > 0:
                         logger.info(f"🔄 Updated {content_type}: {stats['updated']}")
+                    if stats.get('auth_walled', 0) > 0:
+                        logger.info(f"🔒 {stats['auth_walled']} {content_type} require auth — skipped")
                     if stats.get('errors', 0) > 0:
                         logger.warning(f"⚠️  Errors in {content_type}: {stats['errors']}")
 
@@ -393,6 +397,12 @@ Examples:
         '--no-endpoints',
         action='store_true',
         help="Skip the REST discovery walk (custom post types, taxonomies, menus, ...)"
+    )
+    archive_parser.add_argument(
+        '--recheck-permissions',
+        action='store_true',
+        help="Re-probe REST endpoints that returned permission errors (401/403) on a "
+             "previous run with the same credentials (they're skipped by default)"
     )
     archive_parser.add_argument(
         '--download-videos',
