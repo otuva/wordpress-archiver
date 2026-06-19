@@ -639,6 +639,24 @@ class DatabaseManager:
             ))
             conn.commit()
 
+    def permalink_index(self) -> List[tuple]:
+        """(permalink, content_type, wp_id) for the latest version of every post
+        and page. Source for rewriting internal hyperlinks to local viewer routes;
+        the permalink comes straight from the stored raw_json (never recomputed)."""
+        out = []
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            for content_type in ('posts', 'pages'):
+                cursor.execute(
+                    f"SELECT p.wp_id, json_extract(p.raw_json, '$.link') "
+                    f"FROM {content_type} p "
+                    f"JOIN (SELECT wp_id, MAX(version) mv FROM {content_type} "
+                    f"GROUP BY wp_id) m ON m.wp_id = p.wp_id AND m.mv = p.version")
+                for wp_id, link in cursor.fetchall():
+                    if link:
+                        out.append((link, content_type, wp_id))
+        return out
+
     # --- videos ----------------------------------------------------------------
 
     def get_video_by_url_hash(self, url_hash: str) -> Optional[Dict[str, Any]]:

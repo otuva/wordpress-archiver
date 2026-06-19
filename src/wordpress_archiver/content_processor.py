@@ -12,7 +12,7 @@ import logging
 from typing import Dict, Any, Optional, List, Set
 from datetime import datetime
 from pathlib import PurePosixPath
-from urllib.parse import urlparse, urljoin, urlunparse
+from urllib.parse import urlparse, urljoin, urlunparse, parse_qs
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,64 @@ def is_archivable_asset(normalized_url: str) -> bool:
     if host in AVATAR_HOSTS or host.endswith('.gravatar.com') or host.endswith('.wp.com'):
         return True
     return False
+
+
+def normalize_permalink(url: str, site_url: Optional[str] = None) -> str:
+    """Canonical key for matching an ``<a href>`` to an archived post/page.
+
+    Resolves relative URLs against ``site_url``, then keys on host+path only:
+    scheme- and ``www``-insensitive, with query, fragment and trailing slash
+    dropped. Returns '' when there is no usable host (``mailto:``, bare fragments,
+    …) so such links never match the index and are left untouched.
+    """
+    if not url:
+        return ''
+    url = html.unescape(url.strip())
+    if site_url:
+        url = urljoin(site_url, url)
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    if host.startswith('www.'):
+        host = host[4:]
+    if not host:
+        return ''
+    return host + parsed.path.rstrip('/')
+
+
+def _local_route(content_type: str, wp_id: int, frag: str) -> str:
+    route = f"/{content_type}/{wp_id}"
+    return f"{route}#{frag}" if frag else route
+
+
+def resolve_internal_link(href: str, site_url: Optional[str],
+                          permalink_map: Dict[str, tuple],
+                          post_ids: Set[int], page_ids: Set[int]) -> Optional[str]:
+    """Map an ``<a href>`` to a local archive route, or None to leave it as-is.
+
+    Pure/testable — callers supply the (cached) indexes. Resolves exact permalinks
+    plus WordPress query-form permalinks (``?p=`` / ``?page_id=``) and preserves any
+    ``#fragment``. ONLY links to *archived* posts/pages resolve; external links and
+    same-site links to un-archived content return None (left pointing at the
+    original, the standard web-archive convention).
+    """
+    if not href:
+        return None
+    base, _, frag = href.partition('#')
+    if not base:
+        return None  # pure same-page fragment (e.g. "#section") — never rewrite
+    parsed = urlparse(base)
+    if parsed.query:
+        qs = parse_qs(parsed.query)
+        pid = qs.get('p', [''])[0]
+        if pid.isdigit() and int(pid) in post_ids:
+            return _local_route('posts', int(pid), frag)
+        gid = qs.get('page_id', [''])[0]
+        if gid.isdigit() and int(gid) in page_ids:
+            return _local_route('pages', int(gid), frag)
+    hit = permalink_map.get(normalize_permalink(base, site_url))
+    if hit:
+        return _local_route(hit[0], hit[1], frag)
+    return None
 
 
 # Precompiled extraction patterns (compiled once at import).

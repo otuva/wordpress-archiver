@@ -20,7 +20,9 @@ from markupsafe import Markup
 import html
 
 from .database import DatabaseManager
-from .content_processor import normalize_asset_url, url_hash, is_archivable_asset, extract_video_embeds, _VIDEO_HOSTS
+from .content_processor import (normalize_asset_url, url_hash, is_archivable_asset,
+                                extract_video_embeds, _VIDEO_HOSTS,
+                                normalize_permalink, resolve_internal_link)
 
 # =============================================================================
 # FLASK APP CONFIGURATION
@@ -49,6 +51,12 @@ sqlite3.enable_callback_tracebacks(True)
 _site_url_cache = None
 _video_hash_cache = None
 _video_cache_loaded_at = 0.0
+# Internal-link rewriting indexes — built once on first render (a server restart
+# picks up a grown archive). permalink_map: {host+path -> (content_type, wp_id)};
+# the id sets back the ?p= / ?page_id= query-permalink fallback.
+_permalink_map_cache = None
+_archived_post_ids_cache = None
+_archived_page_ids_cache = None
 
 # Precompiled regexes for URL rewriting (no BeautifulSoup dependency).
 _REWRITE_IMG_SRC_RX = re.compile(
@@ -72,6 +80,9 @@ _REWRITE_META_IMG_RX = re.compile(
     r'[^>]*?\bcontent\s*=\s*["\'])([^"\']+)(["\'])', re.IGNORECASE)
 _REWRITE_ANY_UPLOAD_RX = re.compile(
     r'https?://[^\s"\'<>()]+/wp-content/uploads/[^\s"\'<>()]+', re.IGNORECASE)
+# Any anchor href — the resolver decides whether it maps to an archived post/page.
+_REWRITE_ANCHOR_HREF_RX = re.compile(
+    r'(<a\b[^>]*?\bhref\s*=\s*["\'])([^"\']+)(["\'])', re.IGNORECASE)
 
 
 # 1x1 transparent GIF placeholder for missing media assets (43 bytes).
@@ -109,6 +120,19 @@ def render_html(text: str) -> str:
     site_url = _site_url_cache
     downloaded_videos = _video_hash_cache
 
+    # Build the internal-link index once (read-only; cached for the process).
+    global _permalink_map_cache, _archived_post_ids_cache, _archived_page_ids_cache
+    if _permalink_map_cache is None:
+        pmap, post_ids, page_ids = {}, set(), set()
+        for link, ctype, wp_id in get_db_manager().permalink_index():
+            key = normalize_permalink(link, site_url)
+            if key:
+                pmap[key] = (ctype, wp_id)
+            (post_ids if ctype == 'posts' else page_ids).add(wp_id)
+        _permalink_map_cache = pmap
+        _archived_post_ids_cache = post_ids
+        _archived_page_ids_cache = page_ids
+
     # --- Replace video iframes that have been downloaded with <video> ---
     def _replace_video_iframe(m):
         src = m.group(1).strip()
@@ -144,6 +168,15 @@ def render_html(text: str) -> str:
     decoded = _REWRITE_IMG_SRC_RX.sub(_rewrite_asset_url, decoded)
     decoded = _REWRITE_SOURCE_SRC_RX.sub(_rewrite_asset_url, decoded)
     decoded = _REWRITE_UPLOAD_HREF_RX.sub(_rewrite_asset_url, decoded)
+
+    # --- Internal hyperlinks: archived post/page permalinks -> local routes ---
+    def _rewrite_internal_link(m):
+        local = resolve_internal_link(m.group(2), site_url, _permalink_map_cache,
+                                      _archived_post_ids_cache, _archived_page_ids_cache)
+        return m.group(1) + local + m.group(3) if local else m.group(0)
+
+    decoded = _REWRITE_ANCHOR_HREF_RX.sub(_rewrite_internal_link, decoded)
+
     decoded = _REWRITE_CSS_URL_RX.sub(_rewrite_asset_url, decoded)
 
     # --- srcset rewriting (each attribute holds multiple URL+descriptor pairs) ---
