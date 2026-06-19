@@ -535,13 +535,18 @@ class WordPressArchiver:
     # =========================================================================
 
     def archive_all_endpoints(self, api: WordPressAPI,
-                              limit: Optional[int] = None) -> Dict[str, int]:
+                              limit: Optional[int] = None,
+                              recheck_permissions: bool = False) -> Dict[str, int]:
         """Walk the REST discovery index and archive every collection it lists
         that isn't already a typed table (CPTs, custom taxonomies, menus,
         templates, plugin routes...) as raw JSON, so nothing is silently missed.
-        ``limit`` caps objects archived per route for quick preview runs.
+
+        Routes that returned 401/403 on a previous run with the same auth identity
+        are skipped (an identical request can't change the result) unless that
+        identity changed or ``recheck_permissions`` forces a re-probe. ``limit``
+        caps objects archived per route for quick preview runs.
         """
-        stats = _new_stats(discovered=0, skipped=0, routes=0)
+        stats = _new_stats(discovered=0, skipped=0, routes=0, auth_walled=0)
         try:
             root = api.get_root()
         except WordPressAPIError as e:
@@ -565,14 +570,59 @@ class WordPressArchiver:
             routes = root.data.get('routes', {}) or {}
         collection_routes = self._discover_collection_routes(routes)
         stats["routes"] = len(collection_routes)
-        logger.info(f"Discovered {len(collection_routes)} extra collection routes to archive")
+        discovered_routes = set(collection_routes)
+        logger.info(f"Discovered {len(discovered_routes)} extra collection routes to archive")
 
+        # The permission-skip cache is an ANONYMOUS-run optimization only. The WP
+        # index never advertises which routes need auth, so the first anonymous
+        # 401/403 is unavoidable — but re-probing the same walls every run isn't.
+        # An authenticated run, by contrast, legitimately reaches most routes (few
+        # walls) and must never trust a cached wall: a wrong password or a later
+        # capability grant could otherwise silently hide content, breaking the
+        # lossless guarantee. So authed runs always full-probe and never touch the
+        # cache.
+        anon = not api.authenticated
+        reuse_skips = anon and not recheck_permissions
+        prior_skips = set()
+        if reuse_skips:
+            raw = self.db.get_meta('endpoint_permission_skips')
+            if raw:
+                try:
+                    loaded = json.loads(raw)
+                    if isinstance(loaded, list):
+                        prior_skips = set(loaded)
+                except (ValueError, TypeError):
+                    prior_skips = set()
+            walled_here = prior_skips & discovered_routes
+            if walled_here:
+                collection_routes = [r for r in collection_routes if r not in walled_here]
+                logger.info(
+                    f"Skipping {len(walled_here)} endpoint(s) walled off on a "
+                    f"previous run — pass --recheck-permissions to retry them")
+
+        walled = set()
         for route in collection_routes:
             try:
-                self._archive_endpoint(api, route, stats, limit=limit)
+                outcome = self._archive_endpoint(api, route, stats, limit=limit)
             except Exception as e:
                 logger.warning(f"Error archiving endpoint {route}: {e}")
                 stats["errors"] += 1
+                continue
+            if outcome == 'walled':
+                walled.add(route)
+                stats["auth_walled"] += 1
+                logger.debug(f"Endpoint {route} requires auth (401/403) — recorded to skip")
+            elif outcome == 'param':
+                logger.debug(f"Endpoint {route} rejected our params (400) — skipped")
+
+        # Persist the cache for next time — anon runs only (see above). When we
+        # reused prior skips (didn't re-probe them) keep them; when re-probing,
+        # trust only what we just saw. Intersect with currently-discovered routes
+        # so the record can't accumulate routes that no longer exist.
+        if anon:
+            persisted = (walled | prior_skips) & discovered_routes
+            self.db.set_meta('endpoint_permission_skips',
+                             json.dumps(sorted(persisted), ensure_ascii=False))
 
         stats["processed"] = stats["discovered"]
         return stats
@@ -612,36 +662,30 @@ class WordPressArchiver:
         return out
 
     def _archive_endpoint(self, api: WordPressAPI, route: str, stats: Dict[str, int],
-                          limit: Optional[int] = None):
+                          limit: Optional[int] = None) -> Optional[str]:
         """Paginate one collection route and store each object in api_objects.
 
-        ``limit`` caps how many objects are stored from this route (preview runs).
+        Returns an outcome classification for the caller:
+          ``'walled'`` — route returned 401/403 (permission-gated); recorded so we
+          skip it on future runs with the same auth identity.
+          ``'param'``  — route returned 400 (needs params we can't supply).
+          ``None``     — archived (or empty) normally.
+        Both 'walled' and 'param' are expected and not errors; genuine failures
+        (5xx/network) raise WordPressAPIError. ``limit`` caps objects stored.
         """
         page = 1
         route_count = 0
         while True:
-            params = {'page': page, 'per_page': 100}
-            if api.authenticated:
-                params['context'] = 'edit'
             try:
-                response = api.get_json(route, params=params)
-            except WordPressAPIError:
-                if api.authenticated:
-                    # Retry without context=edit in case the route rejects it
-                    try:
-                        response = api.get_json(route,
-                                                params={'page': page, 'per_page': 100})
-                    except WordPressAPIError:
-                        if page == 1:
-                            response = api.get_json(route)
-                        else:
-                            break
-                else:
-                    if page == 1:
-                        # Route may not support pagination/params; try once bare.
-                        response = api.get_json(route)
-                    else:
-                        break
+                response = api.get_route_page(route, page=page)
+            except WordPressAPIError as e:
+                if page > 1:
+                    break  # later-page failure = end of pagination, not an error
+                if e.status_code in (401, 403):
+                    return 'walled'
+                if e.status_code == 400:
+                    return 'param'
+                raise
 
             data = response.data
             if isinstance(data, list):
