@@ -605,6 +605,24 @@ class DatabaseManager:
             cursor.execute("SELECT url_hash FROM media WHERE status != 'failed'")
             return {row[0] for row in cursor.fetchall()}
 
+    # HTTP statuses where re-fetching the same URL can't change the outcome: the
+    # resource is declared absent (404/410) or access is denied (401/403). Transient
+    # failures (429, 5xx, timeouts/connection errors → NULL http_status) are NOT
+    # listed, so they keep being retried on later runs.
+    PERMANENT_FAILURE_STATUSES = (401, 403, 404, 410)
+
+    def permanently_failed_media_hashes(self) -> set:
+        """url_hashes of media that failed with a permanent HTTP status, so re-runs
+        can skip re-fetching them (override with --retry-failed-media)."""
+        placeholders = ",".join("?" * len(self.PERMANENT_FAILURE_STATUSES))
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"SELECT url_hash FROM media WHERE status = 'failed' "
+                f"AND http_status IN ({placeholders})",
+                self.PERMANENT_FAILURE_STATUSES)
+            return {row[0] for row in cursor.fetchall()}
+
     def insert_media(self, url_hash: str, url: str, content: Optional[bytes],
                      content_hash: Optional[str], mime_type: Optional[str],
                      status: str, http_status: Optional[int]):
