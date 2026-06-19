@@ -22,7 +22,7 @@ import html
 from .database import DatabaseManager
 from .content_processor import (normalize_asset_url, url_hash, is_archivable_asset,
                                 extract_video_embeds, _VIDEO_HOSTS,
-                                normalize_permalink, resolve_internal_link)
+                                _split_permalink, resolve_internal_link)
 
 # =============================================================================
 # FLASK APP CONFIGURATION
@@ -53,10 +53,12 @@ _video_hash_cache = None
 _video_cache_loaded_at = 0.0
 # Internal-link rewriting indexes — built once on first render (a server restart
 # picks up a grown archive). permalink_map: {host+path -> (content_type, wp_id)};
-# the id sets back the ?p= / ?page_id= query-permalink fallback.
+# the id sets back the ?p= / ?page_id= query-permalink fallback; _site_host_cache
+# is the archived site's host, used to leave off-site links alone.
 _permalink_map_cache = None
 _archived_post_ids_cache = None
 _archived_page_ids_cache = None
+_site_host_cache = None
 
 # Precompiled regexes for URL rewriting (no BeautifulSoup dependency).
 _REWRITE_IMG_SRC_RX = re.compile(
@@ -66,7 +68,7 @@ _REWRITE_SOURCE_SRC_RX = re.compile(
 _REWRITE_SRCSET_RX = re.compile(
     r'(srcset\s*=\s*["\'])([^"\']+)(["\'])', re.IGNORECASE)
 _REWRITE_UPLOAD_HREF_RX = re.compile(
-    r'(<a\b[^>]*?\bhref\s*=\s*["\'])([^"\']*wp-content/uploads[^"\']*)(["\'])', re.IGNORECASE)
+    r'(<a\b[^>]*?(?<![-\w])href\s*=\s*["\'])([^"\']*wp-content/uploads[^"\']*)(["\'])', re.IGNORECASE)
 # Matches url(x), url('x') and url( "x" ) alike. Group 2 is the bare URL
 # (no quotes/whitespace/paren) so it normalizes to the same hash the archiver's
 # _CSS_URL_RE produced at download time; groups 1 and 3 preserve any quotes.
@@ -81,8 +83,10 @@ _REWRITE_META_IMG_RX = re.compile(
 _REWRITE_ANY_UPLOAD_RX = re.compile(
     r'https?://[^\s"\'<>()]+/wp-content/uploads/[^\s"\'<>()]+', re.IGNORECASE)
 # Any anchor href — the resolver decides whether it maps to an archived post/page.
+# (?<![-\w]) keeps \bhref from also matching data-href / ng-href and rewriting the
+# wrong attribute while leaving the real href untouched.
 _REWRITE_ANCHOR_HREF_RX = re.compile(
-    r'(<a\b[^>]*?\bhref\s*=\s*["\'])([^"\']+)(["\'])', re.IGNORECASE)
+    r'(<a\b[^>]*?(?<![-\w])href\s*=\s*["\'])([^"\']+)(["\'])', re.IGNORECASE)
 
 
 # 1x1 transparent GIF placeholder for missing media assets (43 bytes).
@@ -122,16 +126,22 @@ def render_html(text: str) -> str:
 
     # Build the internal-link index once (read-only; cached for the process).
     global _permalink_map_cache, _archived_post_ids_cache, _archived_page_ids_cache
+    global _site_host_cache
     if _permalink_map_cache is None:
+        site_host, _, _ = _split_permalink(site_url)
         pmap, post_ids, page_ids = {}, set(), set()
         for link, ctype, wp_id in get_db_manager().permalink_index():
-            key = normalize_permalink(link, site_url)
-            if key:
-                pmap[key] = (ctype, wp_id)
+            host, path, _ = _split_permalink(link, site_url)
+            # Skip bare-host/home links (empty path): on a plain-permalink site every
+            # post and the front page collapse to the same key, so mapping them would
+            # mis-route. The ?p=/?page_id= fallback still resolves those by id.
+            if host and path:
+                pmap[host + path] = (ctype, wp_id)
             (post_ids if ctype == 'posts' else page_ids).add(wp_id)
         _permalink_map_cache = pmap
         _archived_post_ids_cache = post_ids
         _archived_page_ids_cache = page_ids
+        _site_host_cache = site_host
 
     # --- Replace video iframes that have been downloaded with <video> ---
     def _replace_video_iframe(m):
@@ -170,9 +180,13 @@ def render_html(text: str) -> str:
     decoded = _REWRITE_UPLOAD_HREF_RX.sub(_rewrite_asset_url, decoded)
 
     # --- Internal hyperlinks: archived post/page permalinks -> local routes ---
+    # Runs AFTER the upload-href pass on purpose: that pass has already turned on-site
+    # upload links into /media/<hash>, and resolve_internal_link skips any href that is
+    # already a local route, so the two anchor passes never collide.
     def _rewrite_internal_link(m):
         local = resolve_internal_link(m.group(2), site_url, _permalink_map_cache,
-                                      _archived_post_ids_cache, _archived_page_ids_cache)
+                                      _archived_post_ids_cache, _archived_page_ids_cache,
+                                      _site_host_cache)
         return m.group(1) + local + m.group(3) if local else m.group(0)
 
     decoded = _REWRITE_ANCHOR_HREF_RX.sub(_rewrite_internal_link, decoded)
