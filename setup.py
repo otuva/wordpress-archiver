@@ -55,7 +55,11 @@ setup(
     },
     include_package_data=True,
     package_data={
-        "wordpress_archiver": ["templates/*.html"],
+        "wordpress_archiver": [
+            "templates/*.html",
+            "static/css/*.css",
+            "static/js/*.js",
+        ],
     },
     keywords="wordpress, archive, backup, sqlite, content-management",
     project_urls={

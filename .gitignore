@@ -2,3 +2,6 @@ venv
 __pycache__
 *.db
 .venv
+build/
+dist/
+*.egg-info/
