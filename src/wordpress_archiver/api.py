@@ -63,6 +63,21 @@ class WordPressAPI:
                 params["status"] = "any"
         return params
 
+    @staticmethod
+    def _api_error(context: str, exc: Exception) -> 'WordPressAPIError':
+        """Convert a requests exception to a WordPressAPIError without changing message text."""
+        if isinstance(exc, requests.exceptions.Timeout):
+            return WordPressAPIError(f"Request timeout for {context}")
+        if isinstance(exc, requests.exceptions.ConnectionError):
+            return WordPressAPIError(f"Connection error for {context}")
+        if isinstance(exc, requests.exceptions.HTTPError):
+            return WordPressAPIError(f"HTTP error {exc.response.status_code}: {exc.response.text}")
+        if isinstance(exc, requests.exceptions.RequestException):
+            return WordPressAPIError(f"Request failed: {exc}")
+        if isinstance(exc, ValueError):
+            return WordPressAPIError(f"Invalid JSON response: {exc}")
+        return WordPressAPIError(str(exc))
+
     def _make_request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None) -> WordPressResponse:
         """
         Internal method to make an API request with comprehensive error handling.
@@ -92,16 +107,16 @@ class WordPressAPI:
             
             return WordPressResponse(data, total_count, total_pages_count)
             
-        except requests.exceptions.Timeout:
-            raise WordPressAPIError(f"Request timeout for {url}")
-        except requests.exceptions.ConnectionError:
-            raise WordPressAPIError(f"Connection error for {url}")
+        except requests.exceptions.Timeout as e:
+            raise self._api_error(url, e)
+        except requests.exceptions.ConnectionError as e:
+            raise self._api_error(url, e)
         except requests.exceptions.HTTPError as e:
-            raise WordPressAPIError(f"HTTP error {e.response.status_code}: {e.response.text}")
+            raise self._api_error(url, e)
         except requests.exceptions.RequestException as e:
-            raise WordPressAPIError(f"Request failed: {e}")
+            raise self._api_error(url, e)
         except ValueError as e:
-            raise WordPressAPIError(f"Invalid JSON response: {e}")
+            raise self._api_error(url, e)
 
     def get_posts(self, page: int = 1, per_page: int = 10, after: Optional[str] = None) -> WordPressResponse:
         """
@@ -308,16 +323,16 @@ class WordPressAPI:
             total_count = int(response.headers.get("X-WP-Total", 0))
             total_pages_count = int(response.headers.get("X-WP-TotalPages", 1))
             return WordPressResponse(data, total_count, total_pages_count)
-        except requests.exceptions.Timeout:
-            raise WordPressAPIError(f"Request timeout for {url}")
-        except requests.exceptions.ConnectionError:
-            raise WordPressAPIError(f"Connection error for {url}")
+        except requests.exceptions.Timeout as e:
+            raise self._api_error(url, e)
+        except requests.exceptions.ConnectionError as e:
+            raise self._api_error(url, e)
         except requests.exceptions.HTTPError as e:
-            raise WordPressAPIError(f"HTTP error {e.response.status_code}: {e.response.text}")
+            raise self._api_error(url, e)
         except requests.exceptions.RequestException as e:
-            raise WordPressAPIError(f"Request failed: {e}")
+            raise self._api_error(url, e)
         except ValueError as e:
-            raise WordPressAPIError(f"Invalid JSON response: {e}")
+            raise self._api_error(url, e)
 
     def get_root(self) -> WordPressResponse:
         """Fetch the REST API discovery index at /wp-json/ (lists every route)."""
@@ -333,16 +348,6 @@ class WordPressAPI:
         url = f"{self.domain}/wp-json{route}"
         return self._request_full(url, params=params)
 
-    def get_settings(self) -> WordPressResponse:
-        """Fetch site settings (/wp/v2/settings, requires authentication)."""
-        return self._make_request("GET", "settings")
-
-    def get_revisions(self, parent_type: str, parent_id: int,
-                      page: int = 1, per_page: int = 100) -> WordPressResponse:
-        """Fetch revisions for a post or page (requires authentication)."""
-        params = {"page": page, "per_page": per_page}
-        return self._make_request("GET", f"{parent_type}/{parent_id}/revisions", params=params)
-
     def download_binary(self, url: str, max_size_bytes: int = 50 * 1024 * 1024) -> tuple:
         """
         Download a binary asset.
@@ -355,27 +360,27 @@ class WordPressAPI:
             WordPressAPIError: on network/HTTP failure (caller records 'failed').
         """
         try:
-            response = self.session.get(url, timeout=self.timeout, stream=True)
-            status = response.status_code
-            response.raise_for_status()
+            with self.session.get(url, timeout=self.timeout, stream=True) as response:
+                status = response.status_code
+                response.raise_for_status()
 
-            content_type = response.headers.get("Content-Type", "application/octet-stream")
-            declared = response.headers.get("Content-Length")
-            if declared and int(declared) > max_size_bytes:
-                response.close()
-                return None, content_type, status
-
-            chunks = []
-            total = 0
-            for chunk in response.iter_content(chunk_size=8192):
-                if not chunk:
-                    continue
-                total += len(chunk)
-                if total > max_size_bytes:
+                content_type = response.headers.get("Content-Type", "application/octet-stream")
+                declared = response.headers.get("Content-Length")
+                if declared and int(declared) > max_size_bytes:
                     response.close()
                     return None, content_type, status
-                chunks.append(chunk)
-            return b"".join(chunks), content_type, status
+
+                chunks = []
+                total = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > max_size_bytes:
+                        response.close()
+                        return None, content_type, status
+                    chunks.append(chunk)
+                return b"".join(chunks), content_type, status
 
         except requests.exceptions.Timeout:
             raise WordPressAPIError(f"Request timeout for {url}")

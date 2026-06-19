@@ -34,7 +34,7 @@ TYPED_REST_BASES = {'posts', 'pages', 'comments', 'users', 'categories', 'tags',
 
 # Empty stats skeleton; every archive_* returns these keys so session summing works.
 def _new_stats(**extra) -> Dict[str, int]:
-    base = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
+    base = {"processed": 0, "new": 0, "updated": 0, "errors": 0, "failed": 0}
     base.update(extra)
     return base
 
@@ -68,7 +68,7 @@ class WordPressArchiver:
         """
         logger.info(f"Starting archive of {content_type}")
         
-        stats = {"processed": 0, "new": 0, "updated": 0, "errors": 0}
+        stats = _new_stats()
         page = 1
         consecutive_empty_pages = 0
         per_page = min(100, limit) if limit else 100
@@ -222,6 +222,10 @@ class WordPressArchiver:
         else:
             return 'Unknown'
 
+    def _record_failure(self, stats: Dict[str, int]) -> None:
+        stats["failed"] += 1
+        stats["errors"] += 1
+
     # =========================================================================
     # MEDIA (binary assets -> BLOBs in the DB)
     # =========================================================================
@@ -360,13 +364,11 @@ class WordPressArchiver:
                 stats["new"] += 1
             except WordPressAPIError as e:
                 self.db.insert_media(h, url, None, None, None, 'failed', None)
-                stats["failed"] = stats.get("failed", 0) + 1
-                stats["errors"] += 1
+                self._record_failure(stats)
                 logger.warning(f"Failed to download {url}: {e}")
             except Exception as e:
                 self.db.insert_media(h, url, None, None, None, 'failed', None)
-                stats["failed"] = stats.get("failed", 0) + 1
-                stats["errors"] += 1
+                self._record_failure(stats)
                 logger.warning(f"Error downloading {url}: {e}")
 
         # Assets referenced by archived content (+ avatars): always fetched in
@@ -403,7 +405,8 @@ class WordPressArchiver:
     # =========================================================================
 
     def archive_videos(self, api: Optional[WordPressAPI], db_path: str,
-                       timeout: int = 600) -> Dict[str, int]:
+                       timeout: int = 600,
+                       limit: Optional[int] = None) -> Dict[str, int]:
         """Download video embeds with yt-dlp into <db>_media/videos/.
 
         Opt-in. Skips gracefully if yt-dlp is absent; per-video failures are
@@ -448,11 +451,15 @@ class WordPressArchiver:
             fmt = 'best[height<=1080][ext=mp4]/best[ext=mp4]/best'
             merge_args = []
 
+        considered = 0
         for embed in embeds:
             h = url_hash(normalize_asset_url(embed, site_url))
             if h in done:
                 stats["skipped"] += 1
                 continue
+            if limit and considered >= limit:
+                break
+            considered += 1
             output_template = str(videos_dir / f"{h}.%(ext)s")
             try:
                 result = subprocess.run(
@@ -471,8 +478,7 @@ class WordPressArchiver:
                     error_lines = [ln for ln in err.splitlines() if 'ERROR' in ln]
                     msg = (error_lines[-1] if error_lines else err[-500:]).strip()[:500]
                     self.db.insert_video(h, embed, None, None, None, 0, 'failed', msg)
-                    stats["failed"] = stats.get("failed", 0) + 1
-                    stats["errors"] += 1
+                    self._record_failure(stats)
                     logger.warning(f"yt-dlp failed for {embed}: {msg.splitlines()[-1] if msg else ''}")
                     continue
 
@@ -486,8 +492,7 @@ class WordPressArchiver:
                     detail = (result.stderr or result.stdout or '').strip()[-300:]
                     self.db.insert_video(h, embed, None, None, None, 0, 'failed',
                                          f'output file not found. {detail}')
-                    stats["failed"] = stats.get("failed", 0) + 1
-                    stats["errors"] += 1
+                    self._record_failure(stats)
                     continue
 
                 path = Path(filepath)
@@ -498,12 +503,10 @@ class WordPressArchiver:
                 stats["new"] += 1
             except subprocess.TimeoutExpired:
                 self.db.insert_video(h, embed, None, None, None, 0, 'failed', f'timeout ({timeout}s)')
-                stats["failed"] = stats.get("failed", 0) + 1
-                stats["errors"] += 1
+                self._record_failure(stats)
             except Exception as e:
                 self.db.insert_video(h, embed, None, None, None, 0, 'failed', str(e)[:500])
-                stats["failed"] = stats.get("failed", 0) + 1
-                stats["errors"] += 1
+                self._record_failure(stats)
 
         stats["processed"] = stats["discovered"]
         logger.info(
@@ -617,14 +620,28 @@ class WordPressArchiver:
         page = 1
         route_count = 0
         while True:
+            params = {'page': page, 'per_page': 100}
+            if api.authenticated:
+                params['context'] = 'edit'
             try:
-                response = api.get_json(route, params={'page': page, 'per_page': 100})
+                response = api.get_json(route, params=params)
             except WordPressAPIError:
-                if page == 1:
-                    # Route may not support pagination/params; try once bare.
-                    response = api.get_json(route)
+                if api.authenticated:
+                    # Retry without context=edit in case the route rejects it
+                    try:
+                        response = api.get_json(route,
+                                                params={'page': page, 'per_page': 100})
+                    except WordPressAPIError:
+                        if page == 1:
+                            response = api.get_json(route)
+                        else:
+                            break
                 else:
-                    break
+                    if page == 1:
+                        # Route may not support pagination/params; try once bare.
+                        response = api.get_json(route)
+                    else:
+                        break
 
             data = response.data
             if isinstance(data, list):
@@ -643,7 +660,7 @@ class WordPressArchiver:
                 route_count += 1
                 raw = json.dumps(item, ensure_ascii=False)
                 wp_id = self._api_object_id(item, raw)
-                content_hash = self.content_processor.calculate_content_hash(raw)
+                content_hash = hashlib.sha256(raw.encode('utf-8')).hexdigest()
                 existing = self.db.get_api_object_latest(route, wp_id)
                 if existing is None:
                     self.db.insert_api_object(route, wp_id, raw, content_hash, version=1)

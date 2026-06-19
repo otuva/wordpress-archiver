@@ -9,6 +9,7 @@ comments, pages, users, categories, and tags.
 import json
 import os
 import re
+import time
 import sqlite3
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -19,7 +20,7 @@ from markupsafe import Markup
 import html
 
 from .database import DatabaseManager
-from .content_processor import normalize_asset_url, url_hash, is_archivable_asset, extract_video_embeds
+from .content_processor import normalize_asset_url, url_hash, is_archivable_asset, extract_video_embeds, _VIDEO_HOSTS
 
 # =============================================================================
 # FLASK APP CONFIGURATION
@@ -47,6 +48,7 @@ sqlite3.enable_callback_tracebacks(True)
 # picks up newly downloaded videos.
 _site_url_cache = None
 _video_hash_cache = None
+_video_cache_loaded_at = 0.0
 
 # Precompiled regexes for URL rewriting (no BeautifulSoup dependency).
 _REWRITE_IMG_SRC_RX = re.compile(
@@ -65,12 +67,12 @@ _REWRITE_CSS_URL_RX = re.compile(
 _REWRITE_IFRAME_VIDEO_RX = re.compile(
     r'<iframe\b[^>]*?\bsrc\s*=\s*["\']([^"\']+)["\'][^>]*>(?:.*?</iframe>)?',
     re.IGNORECASE | re.DOTALL)
+_REWRITE_META_IMG_RX = re.compile(
+    r'(<meta\b[^>]*?(?:property|name)\s*=\s*["\'](?:og:image(?::url)?|twitter:image)["\']'
+    r'[^>]*?\bcontent\s*=\s*["\'])([^"\']+)(["\'])', re.IGNORECASE)
+_REWRITE_ANY_UPLOAD_RX = re.compile(
+    r'https?://[^\s"\'<>()]+/wp-content/uploads/[^\s"\'<>()]+', re.IGNORECASE)
 
-# Video hosts handled by yt-dlp (must match content_processor._VIDEO_HOSTS).
-_REWRITE_VIDEO_HOSTS = (
-    'youtube.com', 'youtu.be', 'youtube-nocookie.com',
-    'vimeo.com', 'player.vimeo.com', 'odysee.com', 'dailymotion.com',
-)
 
 # 1x1 transparent GIF placeholder for missing media assets (43 bytes).
 _TRANSPARENT_GIF = (
@@ -97,11 +99,12 @@ def render_html(text: str) -> str:
     decoded = html.unescape(text)
 
     # Lazy-load caches on first use (app context must be active).
-    global _site_url_cache, _video_hash_cache
+    global _site_url_cache, _video_hash_cache, _video_cache_loaded_at
     if _site_url_cache is None:
         _site_url_cache = get_db_manager().get_meta('site_url') or ''
-    if _video_hash_cache is None:
+    if _video_hash_cache is None or time.time() - _video_cache_loaded_at > 60:
         _video_hash_cache = get_db_manager().downloaded_video_hashes()
+        _video_cache_loaded_at = time.time()
 
     site_url = _site_url_cache
     downloaded_videos = _video_hash_cache
@@ -114,7 +117,7 @@ def render_html(text: str) -> str:
         if src.lower().startswith('//'):
             check_src = 'https:' + src
         # Only touch known video hosts; leave other embeds intact
-        if not any(h in check_src.lower() for h in _REWRITE_VIDEO_HOSTS):
+        if not any(h in check_src.lower() for h in _VIDEO_HOSTS):
             return m.group(0)
         # Hashing must use the same logic as the archiver
         norm = normalize_asset_url(check_src, site_url)
@@ -165,6 +168,19 @@ def render_html(text: str) -> str:
 
     decoded = _REWRITE_SRCSET_RX.sub(_rewrite_srcset, decoded)
 
+    # --- Meta og:image / twitter:image rewrite ---
+    decoded = _REWRITE_META_IMG_RX.sub(_rewrite_asset_url, decoded)
+
+    # --- Generic uploads URL rewrite (catches data-src, style, etc.) ---
+    def _rewrite_any_upload(m):
+        url = m.group(0)
+        norm = normalize_asset_url(url, site_url)
+        if norm and is_archivable_asset(norm):
+            return '/media/' + url_hash(norm)
+        return url
+
+    decoded = _REWRITE_ANY_UPLOAD_RX.sub(_rewrite_any_upload, decoded)
+
     return Markup(decoded)
 
 
@@ -181,9 +197,15 @@ def calculate_indentation(level: int) -> int:
     return min(level * 20, 200)
 
 
+_db_manager = None
+
 def get_db_manager() -> DatabaseManager:
     """Get database manager instance."""
-    return DatabaseManager(app.config['DATABASE'])
+    global _db_manager
+    db_path = app.config['DATABASE']
+    if _db_manager is None or str(_db_manager.db_path) != db_path:
+        _db_manager = DatabaseManager(db_path)
+    return _db_manager
 
 
 def get_archive_stats() -> Dict[str, Any]:
@@ -321,6 +343,8 @@ def post_detail(wp_id):
         if selected:
             others = [p for p in post_versions if p['version'] != version]
             post_versions = selected + others
+    if version and not selected:
+        return ("Post version not found", 404)
 
     # Get comments for this post
     comments = db.get_post_comments(wp_id)
@@ -844,7 +868,8 @@ def raw_objects(endpoint_name):
     page = max(1, request.args.get('page', 1, type=int))
     per_page = min(200, max(1, request.args.get('per_page', 20, type=int)))
     db = get_db_manager()
-    rows, total, total_pages = db.get_paginated_api_objects(endpoint_name, page, per_page)
+    lookup = '/' + endpoint_name.lstrip('/')
+    rows, total, total_pages = db.get_paginated_api_objects(lookup, page, per_page)
     objects_data = []
     for row in rows:
         obj = dict(row)

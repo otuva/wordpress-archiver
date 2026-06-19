@@ -193,7 +193,7 @@ def archive_command(args):
             if args.download_videos:
                 try:
                     logger.info("🎬 Downloading video embeds with yt-dlp...")
-                    all_stats['videos'] = archiver.archive_videos(api, args.db)
+                    all_stats['videos'] = archiver.archive_videos(api, args.db, limit=args.limit)
                 except Exception as e:
                     logger.error(f"❌ Error downloading videos: {e}")
                     all_stats['videos'] = {'processed': 0, 'new': 0, 'updated': 0, 'errors': 1}
@@ -380,8 +380,9 @@ Examples:
     archive_parser.add_argument(
         '--limit', '-l',
         type=int,
-        help="Limit items per phase (content type, media downloads, and objects "
-             "per REST route) — for quick preview runs. Omit for a full archive."
+        help="Limit items per phase (content type, media downloads, videos, and "
+             "objects per REST route) — for quick preview runs. Omit for a full "
+             "archive."
     )
     archive_parser.add_argument(
         '--no-media',

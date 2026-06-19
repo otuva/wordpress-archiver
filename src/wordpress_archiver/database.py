@@ -251,6 +251,7 @@ DATABASE_INDEXES = [
     ("idx_videos_status", "videos", "status"),
     ("idx_api_objects_endpoint", "api_objects", "endpoint"),
     ("idx_api_objects_wp_id", "api_objects", "wp_id"),
+    ("idx_api_objects_endpoint_wpid_ver", "api_objects", "endpoint, wp_id, version"),
 ]
 
 # Versioned content tables that gain a raw_json column via migration.
@@ -601,7 +602,7 @@ class DatabaseManager:
         """All url_hashes already in the media table (for cheap incremental skips)."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT url_hash FROM media")
+            cursor.execute("SELECT url_hash FROM media WHERE status != 'failed'")
             return {row[0] for row in cursor.fetchall()}
 
     def insert_media(self, url_hash: str, url: str, content: Optional[bytes],
@@ -619,14 +620,6 @@ class DatabaseManager:
                 len(content) if content else 0, status, http_status
             ))
             conn.commit()
-
-    def get_media_count(self) -> Dict[str, int]:
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT status, COUNT(*) FROM media GROUP BY status")
-            result = {row[0]: row[1] for row in cursor.fetchall()}
-            return {'ok': result.get('ok', 0), 'failed': result.get('failed', 0),
-                    'oversized': result.get('oversized', 0)}
 
     # --- videos ----------------------------------------------------------------
 
@@ -655,12 +648,6 @@ class DatabaseManager:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (url_hash, embed_url, local_path, title, file_ext, file_size, status, error_message))
             conn.commit()
-
-    def get_video_count(self) -> Dict[str, int]:
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT status, COUNT(*) FROM videos GROUP BY status")
-            return {row[0]: row[1] for row in cursor.fetchall()}
 
     # --- api_objects (REST discovery completeness net) -------------------------
 

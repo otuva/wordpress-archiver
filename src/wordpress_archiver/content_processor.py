@@ -288,6 +288,12 @@ class ContentProcessor:
             Normalized content data dictionary
         """
         if content_type == 'posts':
+            hash_input = (
+                wp_item.get('title', {}).get('rendered', '')
+                + wp_item.get('content', {}).get('rendered', '')
+                + wp_item.get('excerpt', {}).get('rendered', '')
+                + wp_item.get('status', '')
+            )
             return {
                 'wp_id': wp_item['id'],
                 'title': wp_item.get('title', {}).get('rendered', ''),
@@ -297,12 +303,16 @@ class ContentProcessor:
                 'date_created': wp_item.get('date', ''),
                 'date_modified': wp_item.get('modified', ''),
                 'status': wp_item.get('status', ''),
-                'content_hash': self.calculate_content_hash(wp_item.get('content', {}).get('rendered', '')),
+                'content_hash': self.calculate_content_hash(hash_input),
                 'categories': wp_item.get('categories', []),
                 'tags': wp_item.get('tags', []),
                 'raw_json': json.dumps(wp_item, ensure_ascii=False)
             }
         elif content_type == 'comments':
+            hash_input = (
+                wp_item.get('content', {}).get('rendered', '')
+                + wp_item.get('status', '')
+            )
             return {
                 'wp_id': wp_item['id'],
                 'post_id': wp_item.get('post', 0),
@@ -313,10 +323,16 @@ class ContentProcessor:
                 'content': wp_item.get('content', {}).get('rendered', ''),
                 'date_created': wp_item.get('date', ''),
                 'status': wp_item.get('status', ''),
-                'content_hash': self.calculate_content_hash(wp_item.get('content', {}).get('rendered', '')),
+                'content_hash': self.calculate_content_hash(hash_input),
                 'raw_json': json.dumps(wp_item, ensure_ascii=False)
             }
         elif content_type == 'pages':
+            hash_input = (
+                wp_item.get('title', {}).get('rendered', '')
+                + wp_item.get('content', {}).get('rendered', '')
+                + wp_item.get('excerpt', {}).get('rendered', '')
+                + wp_item.get('status', '')
+            )
             return {
                 'wp_id': wp_item['id'],
                 'title': wp_item.get('title', {}).get('rendered', ''),
@@ -326,7 +342,7 @@ class ContentProcessor:
                 'date_created': wp_item.get('date', ''),
                 'date_modified': wp_item.get('modified', ''),
                 'status': wp_item.get('status', ''),
-                'content_hash': self.calculate_content_hash(wp_item.get('content', {}).get('rendered', '')),
+                'content_hash': self.calculate_content_hash(hash_input),
                 'raw_json': json.dumps(wp_item, ensure_ascii=False)
             }
         elif content_type == 'users':
