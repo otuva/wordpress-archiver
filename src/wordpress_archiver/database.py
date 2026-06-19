@@ -165,6 +165,64 @@ POST_TAGS_TABLE_SCHEMA = '''
     )
 '''
 
+# Stores the actual bytes of every referenced image/PDF/avatar so the archive is
+# self-contained (single portable file). Keyed by url_hash = sha256(normalized url).
+MEDIA_TABLE_SCHEMA = '''
+    CREATE TABLE IF NOT EXISTS media (
+        id INTEGER PRIMARY KEY,
+        url_hash TEXT NOT NULL UNIQUE,
+        url TEXT NOT NULL,
+        content BLOB,
+        content_hash TEXT,
+        mime_type TEXT DEFAULT 'application/octet-stream',
+        byte_size INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'ok',
+        http_status INTEGER,
+        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+'''
+
+# Tracks videos downloaded with yt-dlp to a folder on disk (NOT in the DB — too
+# large). local_path is the filename within <db>_media/videos/.
+VIDEOS_TABLE_SCHEMA = '''
+    CREATE TABLE IF NOT EXISTS videos (
+        id INTEGER PRIMARY KEY,
+        url_hash TEXT NOT NULL UNIQUE,
+        embed_url TEXT NOT NULL,
+        local_path TEXT,
+        title TEXT,
+        file_ext TEXT,
+        file_size INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+'''
+
+# Completeness net: raw JSON of every collection object the REST discovery index
+# exposes that isn't already in a typed table (CPTs, custom taxonomies, menus,
+# templates, plugin routes). Versioned like the typed tables.
+API_OBJECTS_TABLE_SCHEMA = '''
+    CREATE TABLE IF NOT EXISTS api_objects (
+        id INTEGER PRIMARY KEY,
+        endpoint TEXT NOT NULL,
+        wp_id INTEGER,
+        raw_json TEXT NOT NULL,
+        content_hash TEXT,
+        version INTEGER DEFAULT 1,
+        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(endpoint, wp_id, version)
+    )
+'''
+
+# Key/value store for archive-wide metadata (site_url, REST discovery document).
+ARCHIVE_META_TABLE_SCHEMA = '''
+    CREATE TABLE IF NOT EXISTS archive_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )
+'''
+
 # =============================================================================
 # DATABASE INDEXES
 # =============================================================================
@@ -186,7 +244,17 @@ DATABASE_INDEXES = [
     ("idx_post_categories_category", "post_categories", "category_wp_id"),
     ("idx_post_tags_post", "post_tags", "post_wp_id"),
     ("idx_post_tags_tag", "post_tags", "tag_wp_id"),
+    ("idx_media_url_hash", "media", "url_hash"),
+    ("idx_media_content_hash", "media", "content_hash"),
+    ("idx_media_status", "media", "status"),
+    ("idx_videos_url_hash", "videos", "url_hash"),
+    ("idx_videos_status", "videos", "status"),
+    ("idx_api_objects_endpoint", "api_objects", "endpoint"),
+    ("idx_api_objects_wp_id", "api_objects", "wp_id"),
 ]
+
+# Versioned content tables that gain a raw_json column via migration.
+RAW_JSON_TABLES = ['posts', 'comments', 'pages', 'users', 'categories', 'tags']
 
 # =============================================================================
 # DATABASE MANAGER CLASS
@@ -237,14 +305,17 @@ class DatabaseManager:
             
             # Create tables
             self._create_tables(cursor)
-            
+
+            # Apply additive migrations to pre-existing databases
+            self._apply_migrations(cursor)
+
             # Create indexes
             self._create_indexes(cursor)
-            
+
             conn.commit()
-            
+
         logger.info("Database schema initialized successfully")
-    
+
     def _create_tables(self, cursor):
         """Create all database tables."""
         schemas = [
@@ -257,11 +328,32 @@ class DatabaseManager:
             SESSIONS_TABLE_SCHEMA,
             POST_CATEGORIES_TABLE_SCHEMA,
             POST_TAGS_TABLE_SCHEMA,
+            MEDIA_TABLE_SCHEMA,
+            VIDEOS_TABLE_SCHEMA,
+            API_OBJECTS_TABLE_SCHEMA,
+            ARCHIVE_META_TABLE_SCHEMA,
         ]
-        
+
         for schema in schemas:
             cursor.execute(schema)
-    
+
+    def _column_exists(self, cursor, table: str, column: str) -> bool:
+        """Return True if a column already exists on a table."""
+        cursor.execute(f"PRAGMA table_info({table})")
+        return any(row[1] == column for row in cursor.fetchall())
+
+    def _apply_migrations(self, cursor):
+        """
+        Idempotently bring an older database up to the current schema.
+
+        Only additive ALTER TABLE ADD COLUMN — never drops or rewrites data, so
+        existing archives upgrade in place without loss.
+        """
+        for table in RAW_JSON_TABLES:
+            if not self._column_exists(cursor, table, 'raw_json'):
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN raw_json TEXT")
+                logger.info(f"Migration: added {table}.raw_json")
+
     def _create_indexes(self, cursor):
         """Create database indexes for better query performance."""
         for index_name, table, column in DATABASE_INDEXES:
@@ -369,14 +461,14 @@ class DatabaseManager:
             
             if content_type == 'posts':
                 cursor.execute('''
-                    INSERT INTO posts 
-                    (wp_id, title, content, excerpt, author_id, date_created, 
-                     date_modified, status, content_hash, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO posts
+                    (wp_id, title, content, excerpt, author_id, date_created,
+                     date_modified, status, content_hash, version, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['title'], data['content'], data['excerpt'],
                     data['author_id'], data['date_created'], data['date_modified'],
-                    data['status'], data['content_hash'], version
+                    data['status'], data['content_hash'], version, data.get('raw_json')
                 ))
                 
                 # Save post-category relationships
@@ -408,26 +500,26 @@ class DatabaseManager:
                             pass
             elif content_type == 'comments':
                 cursor.execute('''
-                    INSERT INTO comments 
-                    (wp_id, post_id, parent_id, author_name, author_email, author_url, 
-                     content, date_created, status, content_hash, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO comments
+                    (wp_id, post_id, parent_id, author_name, author_email, author_url,
+                     content, date_created, status, content_hash, version, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['post_id'], data['parent_id'],
                     data['author_name'], data['author_email'], data['author_url'],
                     data['content'], data['date_created'], data['status'],
-                    data['content_hash'], version
+                    data['content_hash'], version, data.get('raw_json')
                 ))
             elif content_type == 'pages':
                 cursor.execute('''
-                    INSERT INTO pages 
-                    (wp_id, title, content, excerpt, author_id, date_created, 
-                     date_modified, status, content_hash, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO pages
+                    (wp_id, title, content, excerpt, author_id, date_created,
+                     date_modified, status, content_hash, version, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['title'], data['content'], data['excerpt'],
                     data['author_id'], data['date_created'], data['date_modified'],
-                    data['status'], data['content_hash'], version
+                    data['status'], data['content_hash'], version, data.get('raw_json')
                 ))
             elif content_type == 'users':
                 # Convert dict fields to JSON strings for SQLite
@@ -440,40 +532,208 @@ class DatabaseManager:
                     mpp_avatar = json.dumps(mpp_avatar)
                 
                 cursor.execute('''
-                    INSERT INTO users 
-                    (wp_id, name, url, description, link, slug, avatar_urls, 
-                     mpp_avatar, content_hash, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO users
+                    (wp_id, name, url, description, link, slug, avatar_urls,
+                     mpp_avatar, content_hash, version, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['name'], data['url'], data['description'],
                     data['link'], data['slug'], avatar_urls,
-                    mpp_avatar, data['content_hash'], version
+                    mpp_avatar, data['content_hash'], version, data.get('raw_json')
                 ))
             elif content_type == 'categories':
                 cursor.execute('''
-                    INSERT INTO categories 
-                    (wp_id, name, description, link, slug, taxonomy, parent, 
-                     count, content_hash, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO categories
+                    (wp_id, name, description, link, slug, taxonomy, parent,
+                     count, content_hash, version, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['name'], data['description'], data['link'],
                     data['slug'], data['taxonomy'], data['parent'], data['count'],
-                    data['content_hash'], version
+                    data['content_hash'], version, data.get('raw_json')
                 ))
             elif content_type == 'tags':
                 cursor.execute('''
-                    INSERT INTO tags 
-                    (wp_id, name, description, link, slug, taxonomy, count, 
-                     content_hash, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO tags
+                    (wp_id, name, description, link, slug, taxonomy, count,
+                     content_hash, version, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['wp_id'], data['name'], data['description'], data['link'],
                     data['slug'], data['taxonomy'], data['count'],
-                    data['content_hash'], version
+                    data['content_hash'], version, data.get('raw_json')
                 ))
             
             conn.commit()
-    
+
+    # =============================================================================
+    # LOSSLESS ARCHIVE STORES (media blobs, videos, raw endpoints, meta)
+    # =============================================================================
+
+    def update_latest_raw_json(self, content_type: str, wp_id: int, raw_json: str):
+        """
+        Refresh raw_json on the latest version row in place (no new version).
+
+        Used on re-runs where the visible content is unchanged but the API
+        metadata changed, so the newest metadata stays current while content
+        history remains strictly append-only.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"""
+                UPDATE {content_type} SET raw_json = ?
+                WHERE wp_id = ? AND version = (
+                    SELECT MAX(version) FROM {content_type} WHERE wp_id = ?
+                )
+            """, (raw_json, wp_id, wp_id))
+            conn.commit()
+
+    # --- media -----------------------------------------------------------------
+
+    def get_media_by_url_hash(self, url_hash: str) -> Optional[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM media WHERE url_hash = ?", (url_hash,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def media_url_hashes(self) -> set:
+        """All url_hashes already in the media table (for cheap incremental skips)."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT url_hash FROM media")
+            return {row[0] for row in cursor.fetchall()}
+
+    def insert_media(self, url_hash: str, url: str, content: Optional[bytes],
+                     content_hash: Optional[str], mime_type: Optional[str],
+                     status: str, http_status: Optional[int]):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO media
+                (url_hash, url, content, content_hash, mime_type, byte_size, status, http_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                url_hash, url, content, content_hash,
+                mime_type or 'application/octet-stream',
+                len(content) if content else 0, status, http_status
+            ))
+            conn.commit()
+
+    def get_media_count(self) -> Dict[str, int]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT status, COUNT(*) FROM media GROUP BY status")
+            result = {row[0]: row[1] for row in cursor.fetchall()}
+            return {'ok': result.get('ok', 0), 'failed': result.get('failed', 0),
+                    'oversized': result.get('oversized', 0)}
+
+    # --- videos ----------------------------------------------------------------
+
+    def get_video_by_url_hash(self, url_hash: str) -> Optional[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM videos WHERE url_hash = ?", (url_hash,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def downloaded_video_hashes(self) -> set:
+        """url_hashes of successfully downloaded videos (viewer rewrite + skip)."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT url_hash FROM videos WHERE status = 'downloaded'")
+            return {row[0] for row in cursor.fetchall()}
+
+    def insert_video(self, url_hash: str, embed_url: str, local_path: Optional[str],
+                     title: Optional[str], file_ext: Optional[str], file_size: int,
+                     status: str, error_message: Optional[str]):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO videos
+                (url_hash, embed_url, local_path, title, file_ext, file_size, status, error_message)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (url_hash, embed_url, local_path, title, file_ext, file_size, status, error_message))
+            conn.commit()
+
+    def get_video_count(self) -> Dict[str, int]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT status, COUNT(*) FROM videos GROUP BY status")
+            return {row[0]: row[1] for row in cursor.fetchall()}
+
+    # --- api_objects (REST discovery completeness net) -------------------------
+
+    def get_api_object_latest(self, endpoint: str, wp_id: int) -> Optional[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM api_objects
+                WHERE endpoint = ? AND wp_id = ?
+                ORDER BY version DESC LIMIT 1
+            """, (endpoint, wp_id))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def insert_api_object(self, endpoint: str, wp_id: Optional[int], raw_json: str,
+                          content_hash: Optional[str], version: int = 1):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO api_objects (endpoint, wp_id, raw_json, content_hash, version)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (endpoint, wp_id, raw_json, content_hash, version))
+            conn.commit()
+
+    def get_api_endpoints(self) -> List[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT endpoint, COUNT(DISTINCT wp_id) AS count
+                FROM api_objects GROUP BY endpoint ORDER BY endpoint
+            """)
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_paginated_api_objects(self, endpoint: str, page: int, per_page: int) -> tuple:
+        offset = (page - 1) * per_page
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) FROM api_objects
+                WHERE endpoint = ?
+                AND (wp_id, version) IN (
+                    SELECT wp_id, MAX(version) FROM api_objects WHERE endpoint = ? GROUP BY wp_id
+                )
+            """, (endpoint, endpoint))
+            total = cursor.fetchone()[0]
+            cursor.execute("""
+                SELECT wp_id, raw_json, version, fetched_at FROM api_objects
+                WHERE endpoint = ?
+                AND (wp_id, version) IN (
+                    SELECT wp_id, MAX(version) FROM api_objects WHERE endpoint = ? GROUP BY wp_id
+                )
+                ORDER BY wp_id ASC LIMIT ? OFFSET ?
+            """, (endpoint, endpoint, per_page, offset))
+            rows = [dict(r) for r in cursor.fetchall()]
+        total_pages = (total + per_page - 1) // per_page
+        return rows, total, total_pages
+
+    # --- archive_meta ----------------------------------------------------------
+
+    def set_meta(self, key: str, value: str):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT OR REPLACE INTO archive_meta (key, value) VALUES (?, ?)",
+                           (key, value))
+            conn.commit()
+
+    def get_meta(self, key: str) -> Optional[str]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM archive_meta WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
     # =============================================================================
     # POST RELATIONSHIPS (CATEGORIES AND TAGS)
     # =============================================================================
@@ -862,6 +1122,14 @@ class DatabaseManager:
                 cursor.execute(f"SELECT COUNT(DISTINCT wp_id) FROM {table}")
                 stats[f'total_{table}'] = cursor.fetchone()[0]
             
+            # Lossless-archive stores
+            cursor.execute("SELECT COUNT(*) FROM media WHERE status = 'ok'")
+            stats['total_media'] = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM videos WHERE status = 'downloaded'")
+            stats['total_videos'] = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM (SELECT DISTINCT endpoint, wp_id FROM api_objects)")
+            stats['total_api_objects'] = cursor.fetchone()[0]
+
             # Get session statistics
             cursor.execute("SELECT COUNT(*) FROM archive_sessions")
             stats['total_sessions'] = cursor.fetchone()[0]
