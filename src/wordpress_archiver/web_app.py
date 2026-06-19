@@ -30,7 +30,7 @@ app = Flask(__name__, template_folder=Path(__file__).parent / 'templates')
 
 # App configuration
 app.config['DATABASE'] = 'wordpress_archive.db'
-app.config['POSTS_PER_PAGE'] = 9
+app.config['POSTS_PER_PAGE'] = 6
 app.config['COMMENTS_PER_PAGE'] = 20
 
 # Enable SQLite optimizations
