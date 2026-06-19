@@ -15,7 +15,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from pathlib import Path
 
-from .api import WordPressAPI, WordPressAPIError
+from .api import WordPressAPI, WordPressAPIError, PERMISSION_DENIED_STATUSES
 from .database import DatabaseManager
 from .content_processor import (
     ContentProcessor,
@@ -327,11 +327,18 @@ class WordPressArchiver:
         return urls
 
     def archive_media(self, api: WordPressAPI, max_size_bytes: int = 50 * 1024 * 1024,
-                      limit: Optional[int] = None) -> Dict[str, int]:
+                      limit: Optional[int] = None,
+                      retry_failed_media: bool = False) -> Dict[str, int]:
         """Download referenced binary assets into the media BLOB store.
 
         Incremental: URLs already present are skipped. Failures and oversized
         files are recorded (not raised) so a single bad asset never aborts a run.
+
+        Media that previously failed with a permanent status (404/410 gone,
+        401/403 forbidden) is skipped on re-runs — an identical request can't
+        change the outcome — unless ``retry_failed_media`` forces a re-attempt.
+        Transient failures (429/5xx/timeouts) are always retried. The failed row
+        (URL + status) is kept regardless, so the reference is never dropped.
 
         ``limit`` bounds ONLY the broad ``/wp/v2/media`` library-discovery walk
         (a preview convenience). Every asset actually referenced by the archived
@@ -340,14 +347,20 @@ class WordPressArchiver:
         spending the whole budget on unrelated library files. A full run
         (limit=None) downloads everything regardless.
         """
-        stats = _new_stats(discovered=0, downloaded=0, skipped=0, oversized=0)
+        stats = _new_stats(discovered=0, downloaded=0, skipped=0, oversized=0,
+                           dead_skipped=0)
         site_url = self.db.get_meta('site_url') or (api.domain if api else None)
         known = self.db.media_url_hashes()
+        dead = set() if retry_failed_media else self.db.permanently_failed_media_hashes()
 
         def _fetch(url: str) -> None:
             h = url_hash(url)
             if h in known:
                 stats["skipped"] += 1
+                return
+            if h in dead:
+                # Previously failed with a permanent status — re-fetching is futile.
+                stats["dead_skipped"] += 1
                 return
             try:
                 content, content_type, http_status = api.download_binary(url, max_size_bytes)
@@ -363,7 +376,7 @@ class WordPressArchiver:
                 stats["downloaded"] += 1
                 stats["new"] += 1
             except WordPressAPIError as e:
-                self.db.insert_media(h, url, None, None, None, 'failed', None)
+                self.db.insert_media(h, url, None, None, None, 'failed', e.status_code)
                 self._record_failure(stats)
                 logger.warning(f"Failed to download {url}: {e}")
             except Exception as e:
@@ -396,6 +409,7 @@ class WordPressArchiver:
         stats["processed"] = stats["discovered"]
         logger.info(
             f"Media: {stats['downloaded']} downloaded, {stats['skipped']} already known, "
+            f"{stats['dead_skipped']} known-dead skipped, "
             f"{stats.get('failed', 0)} failed, {stats['oversized']} oversized"
         )
         return stats
@@ -681,7 +695,7 @@ class WordPressArchiver:
             except WordPressAPIError as e:
                 if page > 1:
                     break  # later-page failure = end of pagination, not an error
-                if e.status_code in (401, 403):
+                if e.status_code in PERMISSION_DENIED_STATUSES:
                     return 'walled'
                 if e.status_code == 400:
                     return 'param'

@@ -12,7 +12,7 @@ import logging
 from typing import Dict, Any, Optional, List, Set
 from datetime import datetime
 from pathlib import PurePosixPath
-from urllib.parse import urlparse, urljoin, urlunparse
+from urllib.parse import urlparse, urljoin, urlunparse, parse_qs, unquote
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,81 @@ def is_archivable_asset(normalized_url: str) -> bool:
     if host in AVATAR_HOSTS or host.endswith('.gravatar.com') or host.endswith('.wp.com'):
         return True
     return False
+
+
+def _split_permalink(url: str, site_url: Optional[str] = None) -> tuple:
+    """(host, path, query) used for permalink matching. ``host`` is lowercased and
+    ``www``-stripped; ``path`` is percent-decoded, lowercased and de-trailing-slashed
+    so the archiver's stored ``$.link`` and an author-written href canonicalize to the
+    same key. Returns ('', '', '') when there is no usable host."""
+    if not url:
+        return ('', '', '')
+    url = html.unescape(url.strip())
+    if site_url:
+        url = urljoin(site_url, url)
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    if host.startswith('www.'):
+        host = host[4:]
+    if not host:
+        return ('', '', '')
+    path = unquote(parsed.path).rstrip('/').lower()
+    return (host, path, parsed.query)
+
+
+def _local_route(content_type: str, wp_id: int, frag: str) -> str:
+    route = f"/{content_type}/{wp_id}"
+    return f"{route}#{frag}" if frag else route
+
+
+# Already-local viewer routes — never re-resolve an href an earlier render pass
+# already rewrote.
+_LOCAL_ROUTE_PREFIXES = ('/media/', '/video/', '/posts/', '/pages/')
+
+def resolve_internal_link(href: str, site_url: Optional[str],
+                          permalink_map: Dict[str, tuple],
+                          post_ids: Set[int], page_ids: Set[int],
+                          site_host: Optional[str] = None) -> Optional[str]:
+    """Map an ``<a href>`` to a local archive route, or None to leave it as-is.
+
+    Pure/testable — callers supply the (cached) indexes. ONLY links to *archived*
+    posts/pages on the archived site's OWN host resolve; external links, links to
+    un-archived content, and bare-host/home links return None (left pointing at the
+    original, the standard web-archive convention). Resolves exact permalinks plus
+    WordPress query-form permalinks (``?p=`` / ``?page_id=``) and preserves any
+    ``#fragment``. ``site_host`` is the archived site's normalized host (host only,
+    www-stripped); when omitted it is derived from ``site_url``.
+    """
+    if not href:
+        return None
+    base, _, frag = href.partition('#')
+    if not base:
+        return None  # pure same-page fragment (e.g. "#section") — never rewrite
+    if base.startswith(_LOCAL_ROUTE_PREFIXES):
+        return None  # already rewritten to a local route by an earlier pass
+    if site_host is None and site_url:
+        site_host, _, _ = _split_permalink(site_url)
+    host, path, query = _split_permalink(base, site_url)
+    if not host:
+        return None  # mailto:, javascript:, bare fragment, …
+    if site_host and host != site_host:
+        return None  # off-site link — never rewrite (web-archive convention)
+    # WordPress query-form permalinks (?p=N / ?page_id=N). isascii() guards Unicode
+    # digits that pass isdigit() but crash int() (e.g. superscript '²').
+    if query:
+        qs = parse_qs(query)
+        pid = qs.get('p', [''])[0]
+        if pid.isascii() and pid.isdigit() and int(pid) in post_ids:
+            return _local_route('posts', int(pid), frag)
+        gid = qs.get('page_id', [''])[0]
+        if gid.isascii() and gid.isdigit() and int(gid) in page_ids:
+            return _local_route('pages', int(gid), frag)
+    if not path:
+        return None  # bare host / homepage — too collision-prone to map
+    hit = permalink_map.get(host + path)
+    if hit:
+        return _local_route(hit[0], hit[1], frag)
+    return None
 
 
 # Precompiled extraction patterns (compiled once at import).

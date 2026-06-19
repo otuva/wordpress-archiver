@@ -163,7 +163,9 @@ def archive_command(args):
                 try:
                     logger.info(f"Archiving {content_type}...")
                     if content_type == 'media':
-                        stats = archiver.archive_media(api, limit=args.limit)
+                        stats = archiver.archive_media(
+                            api, limit=args.limit,
+                            retry_failed_media=args.retry_failed_media)
                     elif content_type == 'endpoints':
                         stats = archiver.archive_all_endpoints(
                             api, limit=args.limit,
@@ -403,6 +405,12 @@ Examples:
         action='store_true',
         help="Re-probe REST endpoints that returned permission errors (401/403) on a "
              "previous run with the same credentials (they're skipped by default)"
+    )
+    archive_parser.add_argument(
+        '--retry-failed-media',
+        action='store_true',
+        help="Re-attempt media that previously failed with a permanent status "
+             "(404/410/401/403); transient failures (429/5xx/timeouts) are always retried"
     )
     archive_parser.add_argument(
         '--download-videos',

@@ -13,6 +13,8 @@ from typing import Dict, Any, Optional, List
 from contextlib import contextmanager
 from pathlib import Path
 
+from .api import PERMANENT_FAILURE_STATUSES
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -605,6 +607,20 @@ class DatabaseManager:
             cursor.execute("SELECT url_hash FROM media WHERE status != 'failed'")
             return {row[0] for row in cursor.fetchall()}
 
+    def permanently_failed_media_hashes(self) -> set:
+        """url_hashes of media that failed with a permanent HTTP status
+        (``PERMANENT_FAILURE_STATUSES`` — 401/403/404/410, defined in ``api``), so
+        re-runs can skip re-fetching them (override with --retry-failed-media).
+        Transient failures (429/5xx/timeouts → NULL http_status) are kept retryable."""
+        placeholders = ",".join("?" * len(PERMANENT_FAILURE_STATUSES))
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"SELECT url_hash FROM media WHERE status = 'failed' "
+                f"AND http_status IN ({placeholders})",
+                PERMANENT_FAILURE_STATUSES)
+            return {row[0] for row in cursor.fetchall()}
+
     def insert_media(self, url_hash: str, url: str, content: Optional[bytes],
                      content_hash: Optional[str], mime_type: Optional[str],
                      status: str, http_status: Optional[int]):
@@ -620,6 +636,34 @@ class DatabaseManager:
                 len(content) if content else 0, status, http_status
             ))
             conn.commit()
+
+    def permalink_index(self) -> List[tuple]:
+        """(permalink, content_type, wp_id) for the latest version of every post
+        and page. Source for rewriting internal hyperlinks to local viewer routes;
+        the permalink comes straight from the stored raw_json (never recomputed).
+
+        Returns whatever it can: if SQLite lacks JSON1 or raw_json is absent
+        (pre-migration archive), the query raises OperationalError — internal-link
+        rewriting is a convenience, not a lossless guarantee, so we log and disable
+        it rather than crash the viewer's first render."""
+        out = []
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            for content_type in ('posts', 'pages'):
+                try:
+                    cursor.execute(
+                        f"SELECT p.wp_id, json_extract(p.raw_json, '$.link') "
+                        f"FROM {content_type} p "
+                        f"JOIN (SELECT wp_id, MAX(version) mv FROM {content_type} "
+                        f"GROUP BY wp_id) m ON m.wp_id = p.wp_id AND m.mv = p.version")
+                except sqlite3.OperationalError as e:
+                    logger.warning(
+                        "permalink_index: internal-link rewriting disabled (%s)", e)
+                    return out
+                for wp_id, link in cursor.fetchall():
+                    if link:
+                        out.append((link, content_type, wp_id))
+        return out
 
     # --- videos ----------------------------------------------------------------
 
