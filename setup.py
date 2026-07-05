@@ -54,6 +54,10 @@ setup(
             "black>=21.0.0",
             "flake8>=3.8.0",
             "mypy>=0.800",
+            # Browser automation for viewer checks (layout-shift / lightbox
+            # regressions). After install run: python -m playwright install chromium
+            "playwright>=1.40.0",
+            "pytest-playwright>=0.4.0",
         ],
     },
     entry_points={

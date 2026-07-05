@@ -148,6 +148,118 @@
     border-radius: var(--border-radius-sm);
 }
 
+/* Center standalone / block-level images (the ones that were left-leaning),
+   but leave images that sit inline within a text run in the flow so archived
+   content isn't visually altered. */
+.content-html > img,
+.content-html p > img:only-child,
+.content-html p > a:only-child > img,
+.content-html figure img,
+.content-html img.aligncenter,
+.content-html img.size-full {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Respect WordPress' own float alignment classes so wrap-around images keep
+   their intended placement instead of being force-centered. Declared after the
+   centering rule so the float wins for aligned images. */
+.content-html img.alignleft,
+.content-html .alignleft {
+    float: left;
+    margin: 0.25rem 1.25rem 1rem 0;
+}
+
+.content-html img.alignright,
+.content-html .alignright {
+    float: right;
+    margin: 0.25rem 0 1rem 1.25rem;
+}
+
+/* Figures / captioned images and centered blocks stay centered. */
+.content-html figure,
+.content-html .wp-caption,
+.content-html .aligncenter {
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+}
+
+/* Clickable content images open in the lightbox. */
+.content-html img.lightboxable {
+    cursor: zoom-in;
+}
+
+/* Full-screen image lightbox overlay.
+   Lock the scroll on <html> (not <body>): the page sets html{overflow-y:scroll},
+   so a <body> overflow would be ignored for the viewport. scrollbar-gutter:stable
+   still reserves the gutter, so locking doesn't shift the layout. */
+html.lightbox-lock {
+    overflow: hidden;
+}
+
+.lightbox-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0, 0, 0, 0.9);
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    cursor: zoom-out;
+}
+
+.lightbox-overlay.open {
+    display: flex;
+}
+
+.lightbox-overlay .lightbox-img {
+    max-width: 95vw;
+    max-height: 95vh;
+    width: auto;
+    height: auto;
+    display: block;
+    border-radius: var(--border-radius-sm);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox-overlay .lightbox-close {
+    position: fixed;
+    top: 1rem;
+    right: 1.5rem;
+    padding: 0;
+    background: none;
+    border: none;
+    font-size: 2.5rem;
+    line-height: 1;
+    color: #fff;
+    cursor: pointer;
+    opacity: 0.85;
+    user-select: none;
+}
+
+.lightbox-overlay .lightbox-close:hover,
+.lightbox-overlay .lightbox-close:focus-visible {
+    opacity: 1;
+}
+
+/* Fallback shown when no candidate URL could be loaded (e.g. a linked PDF). */
+.lightbox-overlay .lightbox-msg {
+    display: none;
+    color: #fff;
+    font-size: 1.1rem;
+}
+
+.lightbox-overlay.error .lightbox-img {
+    display: none;
+}
+
+.lightbox-overlay.error .lightbox-msg {
+    display: block;
+}
+
 /* Responsive Cards */
 @media (max-width: 768px) {
     .card-body {
