@@ -4,6 +4,11 @@
     background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
     box-shadow: var(--shadow-md);
     padding: 1rem 0;
+    /* Reserve the final height so the bar doesn't start short and grow (pushing
+       the whole page down) while the CDN Bootstrap/icons/fonts finish loading.
+       Measured loaded height is 81px; Bootstrap centers the content vertically,
+       so this only sets a floor that holds the layout from the first paint. */
+    min-height: 82px;
 }
 
 .navbar-brand {
