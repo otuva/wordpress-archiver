@@ -25,7 +25,22 @@
 /* Base Styles */
 * {
     box-sizing: border-box;
-    transition: all 0.2s ease;
+}
+
+/* NOTE: no global `transition: all` here. A universal transition animates every
+   property change on every element, so when web/icon fonts finish loading and
+   nudge metrics, the whole page visibly *glides* into place after first paint
+   (a load-time motion the CLS metric never sees). Interactive transitions live
+   on the specific elements that need them (buttons, cards, nav-links). */
+
+/* Reserve a fixed box for every Font Awesome icon. FA icon glyphs have ~zero
+   advance width until the icon font loads, so without this they pop in a beat
+   after first paint and shove the adjacent text sideways. 1.25em matches FA's
+   own .fa-fw fixed width and covers every icon used here. */
+.fa, .fas, .fa-solid, .far, .fa-regular, .fab, .fa-brands {
+    display: inline-block;
+    width: 1.25em;
+    text-align: center;
 }
 
 /* Always reserve the scrollbar gutter so short pages and tall pages keep the
