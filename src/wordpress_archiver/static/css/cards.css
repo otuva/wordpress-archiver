@@ -146,6 +146,86 @@
     max-width: 100%;
     height: auto;
     border-radius: var(--border-radius-sm);
+    /* Center block images by default; archived bodies otherwise left-align
+       because the source site's own layout CSS isn't loaded here. */
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Respect WordPress' own float alignment classes so wrap-around images keep
+   their intended placement instead of being force-centered. */
+.content-html img.alignleft,
+.content-html .alignleft {
+    float: left;
+    margin: 0.25rem 1.25rem 1rem 0;
+}
+
+.content-html img.alignright,
+.content-html .alignright {
+    float: right;
+    margin: 0.25rem 0 1rem 1.25rem;
+}
+
+/* Figures / captioned images and centered blocks stay centered. */
+.content-html figure,
+.content-html .wp-caption,
+.content-html .aligncenter {
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+}
+
+/* Clickable content images open in the lightbox. */
+.content-html img.lightboxable {
+    cursor: zoom-in;
+}
+
+/* Full-screen image lightbox overlay */
+body.lightbox-lock {
+    overflow: hidden;
+}
+
+.lightbox-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0, 0, 0, 0.9);
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    cursor: zoom-out;
+}
+
+.lightbox-overlay.open {
+    display: flex;
+}
+
+.lightbox-overlay .lightbox-img {
+    max-width: 95vw;
+    max-height: 95vh;
+    width: auto;
+    height: auto;
+    display: block;
+    border-radius: var(--border-radius-sm);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox-overlay .lightbox-close {
+    position: fixed;
+    top: 1rem;
+    right: 1.5rem;
+    font-size: 2.5rem;
+    line-height: 1;
+    color: #fff;
+    cursor: pointer;
+    opacity: 0.85;
+    user-select: none;
+}
+
+.lightbox-overlay .lightbox-close:hover {
+    opacity: 1;
 }
 
 /* Responsive Cards */
