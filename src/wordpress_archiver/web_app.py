@@ -311,10 +311,10 @@ def inject_current_year():
 CSP_POLICY = "; ".join([
     "default-src 'self'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com",
+    "style-src 'self' 'unsafe-inline'",
     "img-src * data:",
     "media-src 'self'",
-    "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:",
+    "font-src 'self' data:",
     "frame-src *",
     "object-src 'none'",
     "base-uri 'self'",
