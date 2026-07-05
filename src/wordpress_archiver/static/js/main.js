@@ -88,69 +88,111 @@ document.addEventListener('DOMContentLoaded', function() {
 document.addEventListener('DOMContentLoaded', function() {
     var IMG_EXT_RX = /\.(jpe?g|png|gif|webp|bmp|svg|avif)(\?|#|$)/i;
 
+    // A wrapping <a> counts as an image link if its href ends in an image
+    // extension or points at a local /media/ blob. A /media/ hash URL carries no
+    // extension, so a non-image attachment (e.g. a linked PDF) can slip through
+    // here — openLightbox's onerror chain then falls back to the <img>'s own src.
     function hrefIsImage(href) {
         return !!href && (/^\/media\//.test(href) || IMG_EXT_RX.test(href));
     }
 
-    // Best "big version" URL for an image: a wrapping full-size image link wins,
-    // then the largest srcset candidate, then the image's own source.
-    function bigVersion(img) {
+    // Ordered, de-duplicated URLs to try for the enlarged view, best first: a
+    // wrapping full-size image link, then the largest srcset candidate, then the
+    // image's own source. openLightbox walks this list on each load failure, so a
+    // dead link or a non-image /media/ target degrades to the thumbnail instead
+    // of a broken overlay.
+    function bigVersionCandidates(img) {
+        var urls = [];
+        function add(u) { if (u && urls.indexOf(u) === -1) { urls.push(u); } }
+
         var a = img.closest('a');
-        if (a && hrefIsImage(a.getAttribute('href'))) {
-            return a.getAttribute('href');
-        }
+        var href = a && a.getAttribute('href');
+        if (hrefIsImage(href)) { add(href); }
+
         if (img.srcset) {
             var best = null, bestW = -1;
             img.srcset.split(',').forEach(function(part) {
                 var tokens = part.trim().split(/\s+/);
                 if (!tokens[0]) { return; }
-                var descriptor = tokens[1] || '';
-                var width = descriptor.endsWith('w') ? parseInt(descriptor, 10)
-                          : descriptor.endsWith('x') ? parseFloat(descriptor) * 10000
-                          : 0;
-                if (width > bestW) { bestW = width; best = tokens[0]; }
+                var d = tokens[1] || '';
+                // w-descriptors are pixel widths (hundreds/thousands); x-descriptors
+                // are small density factors (1x/2x/3x). parseFloat keeps both on a
+                // sane scale so a real width outranks a 2x thumbnail if a malformed
+                // srcset mixes them.
+                var last = d.slice(-1);
+                var weight = (last === 'w' || last === 'x') ? parseFloat(d) : 0;
+                if (weight > bestW) { bestW = weight; best = tokens[0]; }
             });
-            if (best) { return best; }
+            add(best);
         }
-        return img.currentSrc || img.getAttribute('src');
+        add(img.currentSrc || img.getAttribute('src'));
+        return urls;
     }
 
     // An image is lightbox-able unless it links to a non-image destination
     // (a real hyperlink to another page/post), which must navigate normally.
     function isLightboxable(img) {
         var a = img.closest('a');
-        var href = a ? a.getAttribute('href') : null;
+        var href = a && a.getAttribute('href');
         if (href && !hrefIsImage(href)) { return false; }
-        return !!bigVersion(img);
+        return bigVersionCandidates(img).length > 0;
     }
 
-    var overlay = null;
+    var overlay = null, lightImg = null;
     function ensureOverlay() {
         if (overlay) { return overlay; }
         overlay = document.createElement('div');
         overlay.className = 'lightbox-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-label', 'Image viewer');
         overlay.innerHTML =
-            '<span class="lightbox-close" aria-label="Close">&times;</span>' +
-            '<img class="lightbox-img" alt="">';
-        overlay.addEventListener('click', closeLightbox);
+            '<button type="button" class="lightbox-close" aria-label="Close">&times;</button>' +
+            '<img class="lightbox-img" alt="">' +
+            '<p class="lightbox-msg">Image unavailable</p>';
+        lightImg = overlay.querySelector('.lightbox-img');
+        // Close on a backdrop or close-button click, but keep the overlay open
+        // when the enlarged image itself is clicked so it can be inspected.
+        overlay.addEventListener('click', function(e) {
+            if (e.target !== lightImg) { closeLightbox(); }
+        });
         document.body.appendChild(overlay);
         return overlay;
     }
 
-    function openLightbox(src, alt) {
-        var o = ensureOverlay();
-        var img = o.querySelector('.lightbox-img');
-        img.src = src;
-        img.alt = alt || '';
-        o.classList.add('open');
-        document.body.classList.add('lightbox-lock');
+    function openLightbox(img) {
+        ensureOverlay();
+        var candidates = bigVersionCandidates(img);
+        var i = 0;
+        overlay.classList.remove('error');
+        lightImg.alt = img.alt || '';
+        lightImg.onerror = function() {
+            i += 1;
+            if (i < candidates.length) {
+                lightImg.src = candidates[i];
+            } else {
+                // Nothing loaded (e.g. the link pointed at a PDF) — show a notice
+                // rather than a broken-image icon.
+                lightImg.onerror = null;
+                lightImg.removeAttribute('src');
+                overlay.classList.add('error');
+            }
+        };
+        lightImg.src = candidates[0];
+        overlay.classList.add('open');
+        // Lock scrolling on <html>: the page's own html{overflow-y:scroll} means
+        // overflow:hidden on <body> would be ignored for the viewport.
+        document.documentElement.classList.add('lightbox-lock');
     }
 
     function closeLightbox() {
-        if (!overlay) { return; }
+        if (!overlay || !overlay.classList.contains('open')) { return; }
         overlay.classList.remove('open');
-        overlay.querySelector('.lightbox-img').src = '';
-        document.body.classList.remove('lightbox-lock');
+        // removeAttribute, not src='' — an empty src resolves to the current page
+        // URL and fires a spurious request for the document itself.
+        lightImg.onerror = null;
+        lightImg.removeAttribute('src');
+        document.documentElement.classList.remove('lightbox-lock');
     }
 
     document.querySelectorAll('.content-html').forEach(function(container) {
@@ -158,14 +200,19 @@ document.addEventListener('DOMContentLoaded', function() {
             if (isLightboxable(img)) { img.classList.add('lightboxable'); }
         });
         container.addEventListener('click', function(e) {
+            // Leave modified/non-primary clicks alone so Ctrl/Cmd/Shift+click can
+            // still open a wrapped image link in a new tab.
+            if (e.defaultPrevented || e.button !== 0 ||
+                e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { return; }
             var img = e.target.closest('img.lightboxable');
             if (!img || !container.contains(img)) { return; }
             e.preventDefault();
-            openLightbox(bigVersion(img), img.alt);
+            openLightbox(img);
         });
     });
 
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') { closeLightbox(); }
+        // !e.repeat: ignore OS key-repeat so a held Escape doesn't re-run close.
+        if (e.key === 'Escape' && !e.repeat) { closeLightbox(); }
     });
 });

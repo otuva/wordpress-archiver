@@ -146,15 +146,25 @@
     max-width: 100%;
     height: auto;
     border-radius: var(--border-radius-sm);
-    /* Center block images by default; archived bodies otherwise left-align
-       because the source site's own layout CSS isn't loaded here. */
+}
+
+/* Center standalone / block-level images (the ones that were left-leaning),
+   but leave images that sit inline within a text run in the flow so archived
+   content isn't visually altered. */
+.content-html > img,
+.content-html p > img:only-child,
+.content-html p > a:only-child > img,
+.content-html figure img,
+.content-html img.aligncenter,
+.content-html img.size-full {
     display: block;
     margin-left: auto;
     margin-right: auto;
 }
 
 /* Respect WordPress' own float alignment classes so wrap-around images keep
-   their intended placement instead of being force-centered. */
+   their intended placement instead of being force-centered. Declared after the
+   centering rule so the float wins for aligned images. */
 .content-html img.alignleft,
 .content-html .alignleft {
     float: left;
@@ -181,8 +191,11 @@
     cursor: zoom-in;
 }
 
-/* Full-screen image lightbox overlay */
-body.lightbox-lock {
+/* Full-screen image lightbox overlay.
+   Lock the scroll on <html> (not <body>): the page sets html{overflow-y:scroll},
+   so a <body> overflow would be ignored for the viewport. scrollbar-gutter:stable
+   still reserves the gutter, so locking doesn't shift the layout. */
+html.lightbox-lock {
     overflow: hidden;
 }
 
@@ -216,6 +229,9 @@ body.lightbox-lock {
     position: fixed;
     top: 1rem;
     right: 1.5rem;
+    padding: 0;
+    background: none;
+    border: none;
     font-size: 2.5rem;
     line-height: 1;
     color: #fff;
@@ -224,8 +240,24 @@ body.lightbox-lock {
     user-select: none;
 }
 
-.lightbox-overlay .lightbox-close:hover {
+.lightbox-overlay .lightbox-close:hover,
+.lightbox-overlay .lightbox-close:focus-visible {
     opacity: 1;
+}
+
+/* Fallback shown when no candidate URL could be loaded (e.g. a linked PDF). */
+.lightbox-overlay .lightbox-msg {
+    display: none;
+    color: #fff;
+    font-size: 1.1rem;
+}
+
+.lightbox-overlay.error .lightbox-img {
+    display: none;
+}
+
+.lightbox-overlay.error .lightbox-msg {
+    display: block;
 }
 
 /* Responsive Cards */
