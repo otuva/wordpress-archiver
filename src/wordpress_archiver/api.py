@@ -26,13 +26,17 @@ PERMANENT_FAILURE_STATUSES = PERMISSION_DENIED_STATUSES + GONE_STATUSES
 def _retrying_adapter() -> HTTPAdapter:
     """Build an HTTPAdapter that retries transient failures with backoff.
 
-    Retries connection errors, read timeouts and 429/5xx responses up to 3
-    times each, waiting 1s/2s/4s between attempts (capped at 30s, and honoring
-    a server's Retry-After header when present — also capped at 30s so a
-    hostile/huge Retry-After can't stall a run for minutes). Only GET/HEAD are
-    retried, since those are the only methods this client issues and they're
-    safe to repeat. ``raise_on_status=False`` means the final (possibly still
-    failing) response is returned rather than raised here, so the existing
+    Retries connection errors and read timeouts up to 3 times, and 429/5xx
+    responses at most twice, waiting 1s/2s/4s between attempts (capped at 30s,
+    and honoring a server's Retry-After header when present — also capped at
+    30s so a hostile/huge Retry-After can't stall a run for minutes). Status
+    retries are capped below the transport ones because callers with their own
+    fallback tiers (``get_route_page`` tries up to three param variants) stack
+    on top of this layer — a route that 503s persistently must fail in
+    seconds, not minutes. Only GET/HEAD are retried, since those are the only
+    methods this client issues and they're safe to repeat.
+    ``raise_on_status=False`` means the final (possibly still failing)
+    response is returned rather than raised here, so the existing
     ``raise_for_status()``/status handling in this module keeps classifying
     permanent failures (401/403/404/410/etc.) exactly as before.
     """
@@ -40,6 +44,7 @@ def _retrying_adapter() -> HTTPAdapter:
         total=3,
         connect=3,
         read=3,
+        status=2,
         backoff_factor=1,
         backoff_max=30,
         status_forcelist=(429, 500, 502, 503, 504),

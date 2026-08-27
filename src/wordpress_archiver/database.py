@@ -968,14 +968,22 @@ class DatabaseManager:
                        wp_id: Optional[int] = None, detail: Optional[str] = None):
         """Record one archive failure so a run can never claim success while
         silently missing data. ``stage`` is one of 'item', 'page', 'taxonomy',
-        'completeness'."""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO archive_failures (content_type, wp_id, stage, detail, error)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (content_type, wp_id, stage, detail, error))
-            conn.commit()
+        'completeness'.
+
+        Best-effort telemetry: this is called from inside exception handlers,
+        so it must never raise — a failing failure-write (locked DB, full
+        disk) is logged and swallowed rather than cascading into the walk.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO archive_failures (content_type, wp_id, stage, detail, error)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (content_type, wp_id, stage, detail, error))
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Could not record archive failure ({content_type}/{stage}): {e}")
 
     def get_recent_failures(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Most recent archive_failures rows, newest first."""

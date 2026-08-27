@@ -209,7 +209,7 @@ class WordPressArchiver:
 
         # If processing a post, fetch and save category/tag details
         if content_type == 'posts' and api:
-            self._process_post_taxonomies(content_data, api)
+            self._process_post_taxonomies(content_data, api, stats)
 
     def _hash_source_unchanged(self, content_type: str, latest: Dict[str, Any],
                                content_data: Dict[str, Any]) -> bool:
@@ -236,13 +236,16 @@ class WordPressArchiver:
             if replaced:
                 stats["refreshed"] += 1
     
-    def _process_post_taxonomies(self, post_data: Dict[str, Any], api: WordPressAPI):
+    def _process_post_taxonomies(self, post_data: Dict[str, Any], api: WordPressAPI,
+                                 stats: Optional[Dict[str, int]] = None):
         """
         Fetch and save category and tag details for a post.
-        
+
         Args:
             post_data: Post data dictionary containing category/tag IDs
             api: WordPress API instance
+            stats: The posts walk's stats dict — fetch failures count into its
+                'errors' so the run's exit status reflects them
         """
         # Process categories
         category_ids = post_data.get('categories', [])
@@ -257,6 +260,8 @@ class WordPressArchiver:
                 except Exception as e:
                     logger.warning(f"Failed to fetch category {category_id}: {e}")
                     self.db.insert_failure('categories', 'taxonomy', str(e), wp_id=category_id)
+                    if stats is not None:
+                        stats["errors"] += 1
 
         # Process tags
         tag_ids = post_data.get('tags', [])
@@ -271,6 +276,8 @@ class WordPressArchiver:
                 except Exception as e:
                     logger.warning(f"Failed to fetch tag {tag_id}: {e}")
                     self.db.insert_failure('tags', 'taxonomy', str(e), wp_id=tag_id)
+                    if stats is not None:
+                        stats["errors"] += 1
     
     def _get_item_title(self, content_data: Dict[str, Any], content_type: str) -> str:
         """Get a human-readable title for the content item."""
@@ -649,7 +656,8 @@ class WordPressArchiver:
         identity changed or ``recheck_permissions`` forces a re-probe. ``limit``
         caps objects archived per route for quick preview runs.
         """
-        stats = _new_stats(discovered=0, skipped=0, routes=0, auth_walled=0)
+        stats = _new_stats(discovered=0, skipped=0, routes=0, auth_walled=0,
+                           incomplete=0)
         try:
             root = api.get_root()
         except WordPressAPIError as e:
@@ -819,11 +827,14 @@ class WordPressArchiver:
                 if page > 1:
                     # Deliberate tolerance for quirky plugin routes that break
                     # pagination partway through — treat as end of pagination
-                    # rather than a hard error, but no longer silently.
+                    # rather than a hard error, but count it so the run can't
+                    # report a clean exit over the dropped tail.
                     logger.warning(
                         f"Endpoint {route} failed on page {page}, ending walk early: {e}")
                     self.db.insert_failure(
                         route, 'page', str(e), detail=f'page {page} (walk ended early)')
+                    stats["errors"] += 1
+                    stats["incomplete"] = 1
                     break
                 if e.status_code in PERMISSION_DENIED_STATUSES:
                     return 'walled'

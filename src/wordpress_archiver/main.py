@@ -110,6 +110,15 @@ def archive_command(args):
     setup_logging(args.verbose)
     logger = logging.getLogger(__name__)
 
+    # Cover the window before `archiver`/`all_stats` exist (site verification
+    # can take several requests): Ctrl+C exits 130 gracefully instead of a raw
+    # KeyboardInterrupt traceback. Upgraded to the session-saving handler once
+    # there is something to save.
+    def _early_interrupt(sig, frame):
+        print("\n\n⚠️  Archive operation interrupted by user (Ctrl+C)")
+        sys.exit(130)
+    signal.signal(signal.SIGINT, _early_interrupt)
+
     # Parse after_date if provided
     after_date = None
     if args.after_date:
