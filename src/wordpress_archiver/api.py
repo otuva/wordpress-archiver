@@ -55,6 +55,10 @@ def _retrying_adapter() -> HTTPAdapter:
     return HTTPAdapter(max_retries=retry)
 
 
+# Which REST query param the `after` date filter maps to, by date_field.
+_AFTER_PARAM = {'modified': 'modified_after', 'published': 'after'}
+
+
 @dataclass
 class WordPressResponse:
     """Custom response object to include data and pagination details."""
@@ -181,19 +185,24 @@ class WordPressAPI:
             # _api_error dispatches on the concrete type (and attaches status_code).
             raise self._api_error(url, e)
 
-    def get_posts(self, page: int = 1, per_page: int = 10, after: Optional[str] = None) -> WordPressResponse:
+    def get_posts(self, page: int = 1, per_page: int = 10, after: Optional[str] = None,
+                  date_field: str = 'modified') -> WordPressResponse:
         """
         Retrieve a paginated list of posts ordered by date ascending.
 
         Args:
             page: Page number to fetch
             per_page: Number of posts per page (default: 10)
-            after: ISO 8601 date-time; sent as ``modified_after`` so the filter
-                catches posts *edited* since that date, not just ones published
-                since it (a new post's modified date equals its publish date,
-                so nothing the old ``after`` matched is lost). WordPress < 5.7
-                ignores the unknown param and returns everything — slower but
-                never lossy.
+            after: ISO 8601 date-time filter; which date it applies to is
+                picked by ``date_field``
+            date_field: 'modified' sends ``modified_after`` (catches posts
+                *edited* since the date — WordPress < 5.7 ignores the unknown
+                param and returns everything, never lossy); 'published' sends
+                the classic ``after`` (publish-date filter). The archiver
+                walks BOTH on an incremental run because neither alone is
+                complete: wp-cron's scheduled-post publish flips post_status
+                without touching post_modified, so a post edited before the
+                cutoff but auto-published after it only matches 'published'.
 
         Returns:
             WordPressResponse object
@@ -205,7 +214,7 @@ class WordPressAPI:
             "order": "asc"
         }
         if after:
-            params["modified_after"] = after
+            params[_AFTER_PARAM[date_field]] = after
 
         return self._make_request("GET", "posts", params=self._maybe_auth_params(params))
 
@@ -260,15 +269,17 @@ class WordPressAPI:
         """
         return self._make_request("GET", f"comments/{comment_id}")
 
-    def get_pages(self, page: int = 1, per_page: int = 10, after: Optional[str] = None) -> WordPressResponse:
+    def get_pages(self, page: int = 1, per_page: int = 10, after: Optional[str] = None,
+                  date_field: str = 'modified') -> WordPressResponse:
         """
         Retrieve a paginated list of pages ordered by date ascending.
-        
+
         Args:
             page: Page number to fetch
             per_page: Number of pages per page (default: 10)
-            after: ISO 8601 date-time; sent as ``modified_after`` (see
-                get_posts — same reasoning, same WP < 5.7 fallback)
+            after: ISO 8601 date-time filter applied per ``date_field``
+            date_field: 'modified' or 'published' — see get_posts for why the
+                archiver needs both on incremental runs
 
         Returns:
             WordPressResponse object
@@ -280,7 +291,7 @@ class WordPressAPI:
             "order": "asc"
         }
         if after:
-            params["modified_after"] = after
+            params[_AFTER_PARAM[date_field]] = after
 
         return self._make_request("GET", "pages", params=self._maybe_auth_params(params))
 

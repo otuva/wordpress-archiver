@@ -83,58 +83,80 @@ class WordPressArchiver:
         # Format date for API
         after_iso = self.content_processor.format_date_for_api(after_date)
 
+        # An incremental posts/pages run needs TWO passes, because neither
+        # date filter alone is complete: modified_after catches edits to old
+        # items but misses scheduled items auto-published by wp-cron (which
+        # flips post_status without touching post_modified); the publish-date
+        # `after` catches those but misses edits. Items already seen in the
+        # first pass are skipped in the second. Everything else is one pass.
+        if after_iso and content_type in ('posts', 'pages'):
+            date_passes = ['modified', 'published']
+        else:
+            date_passes = ['modified']
+
         try:
-            while True:
-                # Get content from API
-                response = self._get_content_page(api, content_type, page, per_page, after_iso)
+            for date_field in date_passes:
+                page = 1
+                consecutive_empty_pages = 0
+                while True:
+                    # Get content from API
+                    response = self._get_content_page(
+                        api, content_type, page, per_page, after_iso, date_field)
 
-                if page == 1:
-                    # X-WP-Total may be omitted (falsy) on routes that don't report
-                    # it — treat that as "unknown", not "zero".
-                    expected = getattr(response, 'total_count', None)
+                    if page == 1 and date_field == date_passes[0]:
+                        # X-WP-Total may be omitted (falsy) on routes that don't report
+                        # it — treat that as "unknown", not "zero".
+                        expected = getattr(response, 'total_count', None)
 
-                if not response.data:
-                    break
+                    if not response.data:
+                        break
 
-                page_has_matching_content = False
+                    page_has_matching_content = False
 
-                for item in response.data:
-                    try:
-                        page_has_matching_content = True
-                        stats["processed"] += 1
+                    for item in response.data:
+                        try:
+                            page_has_matching_content = True
+                            if (date_field != date_passes[0]
+                                    and isinstance(item, dict)
+                                    and item.get('id') in seen):
+                                continue  # already archived by the first pass
+                            stats["processed"] += 1
 
-                        # Process the item
-                        wp_id = self._process_content_item(content_type, item, stats, api)
-                        seen.add(wp_id)
+                            # Process the item
+                            wp_id = self._process_content_item(content_type, item, stats, api)
+                            seen.add(wp_id)
 
-                        # Check limit
-                        if limit and stats["processed"] >= limit:
+                            # Check limit
+                            if limit and stats["processed"] >= limit:
+                                break
+
+                        except Exception as e:
+                            stats["errors"] += 1
+                            logger.error(f"Error processing {content_type} {item.get('id', 'Unknown')}: {e}")
+                            self.db.insert_failure(
+                                content_type, 'item', str(e),
+                                wp_id=item.get('id') if isinstance(item, dict) else None)
+
+                    # Check limit again after processing the page
+                    if limit and stats["processed"] >= limit:
+                        break
+
+                    # Handle consecutive empty pages
+                    if not page_has_matching_content:
+                        consecutive_empty_pages += 1
+                        if consecutive_empty_pages >= 10:
+                            logger.warning(f"Stopping after {consecutive_empty_pages} consecutive pages with no content")
                             break
+                    else:
+                        consecutive_empty_pages = 0
 
-                    except Exception as e:
-                        stats["errors"] += 1
-                        logger.error(f"Error processing {content_type} {item.get('id', 'Unknown')}: {e}")
-                        self.db.insert_failure(
-                            content_type, 'item', str(e),
-                            wp_id=item.get('id') if isinstance(item, dict) else None)
+                    if page >= response.total_pages_count:
+                        break
 
-                # Check limit again after processing the page
+                    page += 1
+
                 if limit and stats["processed"] >= limit:
                     break
-
-                # Handle consecutive empty pages
-                if not page_has_matching_content:
-                    consecutive_empty_pages += 1
-                    if consecutive_empty_pages >= 10:
-                        logger.warning(f"Stopping after {consecutive_empty_pages} consecutive pages with no content")
-                        break
-                else:
-                    consecutive_empty_pages = 0
-
-                if page >= response.total_pages_count:
-                    break
-
-                page += 1
 
         except Exception as e:
             logger.error(f"Error during {content_type} archiving: {e}")
@@ -184,15 +206,20 @@ class WordPressArchiver:
         logger.info(f"Completed archive of {content_type}: {stats}")
         return stats
     
-    def _get_content_page(self, api: WordPressAPI, content_type: str, page: int, 
-                         per_page: int, after_iso: Optional[str] = None):
-        """Get a page of content from the WordPress API."""
+    def _get_content_page(self, api: WordPressAPI, content_type: str, page: int,
+                         per_page: int, after_iso: Optional[str] = None,
+                         date_field: str = 'modified'):
+        """Get a page of content from the WordPress API. ``date_field`` picks
+        which date the after_iso filter applies to for posts/pages ('modified'
+        or 'published'); other types have only their written date."""
         if content_type == "posts":
-            return api.get_posts(page=page, per_page=per_page, after=after_iso)
+            return api.get_posts(page=page, per_page=per_page, after=after_iso,
+                                 date_field=date_field)
         elif content_type == "comments":
             return api.get_comments(page=page, per_page=per_page, after=after_iso)
         elif content_type == "pages":
-            return api.get_pages(page=page, per_page=per_page, after=after_iso)
+            return api.get_pages(page=page, per_page=per_page, after=after_iso,
+                                 date_field=date_field)
         elif content_type == "users":
             return api.get_users(page=page, per_page=per_page, after=after_iso)
         elif content_type == "categories":
