@@ -240,6 +240,14 @@ def archive_command(args):
             total_errors = sum(s.get('errors', 0) for s in all_stats.values())
             total_missing = sum(s.get('missing', 0) for s in all_stats.values())
             any_incomplete = any(s.get('incomplete', 0) for s in all_stats.values())
+            total_gone = sum(s.get('gone', 0) for s in all_stats.values())
+
+            # Tombstones are informational, not a failure: they never affect
+            # the exit code below, only get their own summary line.
+            if total_gone > 0:
+                logger.info(
+                    f"🪦 {total_gone} items no longer visible on the live site "
+                    f"(marked gone_since, rows preserved)")
 
             logger.info("🌐 Run 'python main.py web' to view the archived content in your browser.")
 

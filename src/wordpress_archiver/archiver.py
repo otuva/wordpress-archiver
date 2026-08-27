@@ -69,11 +69,16 @@ class WordPressArchiver:
         """
         logger.info(f"Starting archive of {content_type}")
 
-        stats = _new_stats(refreshed=0, missing=0, incomplete=0)
+        stats = _new_stats(refreshed=0, missing=0, incomplete=0, gone=0)
         page = 1
         consecutive_empty_pages = 0
         per_page = min(100, limit) if limit else 100
         expected: Optional[int] = None
+        # wp_ids of every item this walk actually processed — used after the
+        # walk both to prove liveness (touch_last_seen, every run) and, for a
+        # full/unfiltered/error-free walk only, to detect vanished items
+        # (mark_gone) by diffing against everything ever archived.
+        seen: set = set()
 
         # Format date for API
         after_iso = self.content_processor.format_date_for_api(after_date)
@@ -99,7 +104,8 @@ class WordPressArchiver:
                         stats["processed"] += 1
 
                         # Process the item
-                        self._process_content_item(content_type, item, stats, api)
+                        wp_id = self._process_content_item(content_type, item, stats, api)
+                        seen.add(wp_id)
 
                         # Check limit
                         if limit and stats["processed"] >= limit:
@@ -151,6 +157,30 @@ class WordPressArchiver:
                 content_type, 'completeness',
                 f"archived {stats['processed']} of {expected} reported by X-WP-Total")
 
+        # Liveness bookkeeping: any run — full or filtered/limited — proves
+        # every item it actually saw is still live, so always record that.
+        self.db.touch_last_seen(content_type, sorted(seen))
+
+        # Tombstoning: only trustworthy after a full, unfiltered,
+        # error-free walk — a --limit run, an after_date filter, a page
+        # error (incomplete), per-item errors, or an undercount against
+        # X-WP-Total (missing) all mean this walk didn't see everything,
+        # so "not seen" wouldn't mean "not there".
+        #
+        # CAVEAT even then: without authentication the REST API hides
+        # pending/private/trashed items from the response entirely, so
+        # gone_since here means "not visible to this run's credentials",
+        # not proof the item was deleted on the live site.
+        if (limit is None and after_iso is None and stats["incomplete"] == 0
+                and stats["errors"] == 0 and stats["missing"] == 0):
+            vanished = self.db.all_wp_ids(content_type) - seen
+            if vanished:
+                self.db.mark_gone(content_type, sorted(vanished))
+                stats["gone"] = len(vanished)
+                logger.warning(
+                    f"{content_type}: {len(vanished)} previously-archived items "
+                    f"no longer seen on this walk — marked gone_since")
+
         logger.info(f"Completed archive of {content_type}: {stats}")
         return stats
     
@@ -172,8 +202,13 @@ class WordPressArchiver:
         else:
             raise ValueError(f"Unsupported content type: {content_type}")
     
-    def _process_content_item(self, content_type: str, item: Dict[str, Any], stats: Dict[str, int], api: Optional[WordPressAPI] = None):
-        """Process a single content item."""
+    def _process_content_item(self, content_type: str, item: Dict[str, Any], stats: Dict[str, int], api: Optional[WordPressAPI] = None) -> int:
+        """Process a single content item.
+
+        Returns:
+            The item's wp_id, so the caller can accumulate the set of ids
+            seen on this walk (for last_seen_at / gone_since bookkeeping).
+        """
         # Extract and normalize content data
         content_data = self.content_processor.extract_content_data(item, content_type)
         
@@ -210,6 +245,8 @@ class WordPressArchiver:
         # If processing a post, fetch and save category/tag details
         if content_type == 'posts' and api:
             self._process_post_taxonomies(content_data, api, stats)
+
+        return content_data['wp_id']
 
     def _hash_source_unchanged(self, content_type: str, latest: Dict[str, Any],
                                content_data: Dict[str, Any]) -> bool:

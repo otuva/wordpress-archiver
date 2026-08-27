@@ -35,6 +35,8 @@ POSTS_TABLE_SCHEMA = '''
         content_hash TEXT,
         version INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMP,
+        gone_since TIMESTAMP,
         UNIQUE(wp_id, version)
     )
 '''
@@ -54,6 +56,8 @@ COMMENTS_TABLE_SCHEMA = '''
         content_hash TEXT,
         version INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMP,
+        gone_since TIMESTAMP,
         UNIQUE(wp_id, version),
         FOREIGN KEY (post_id) REFERENCES posts (wp_id),
         FOREIGN KEY (parent_id) REFERENCES comments (wp_id)
@@ -74,6 +78,8 @@ PAGES_TABLE_SCHEMA = '''
         content_hash TEXT,
         version INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMP,
+        gone_since TIMESTAMP,
         UNIQUE(wp_id, version)
     )
 '''
@@ -92,6 +98,8 @@ USERS_TABLE_SCHEMA = '''
         content_hash TEXT,
         version INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMP,
+        gone_since TIMESTAMP,
         UNIQUE(wp_id, version)
     )
 '''
@@ -110,6 +118,8 @@ CATEGORIES_TABLE_SCHEMA = '''
         content_hash TEXT,
         version INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMP,
+        gone_since TIMESTAMP,
         UNIQUE(wp_id, version)
     )
 '''
@@ -127,6 +137,8 @@ TAGS_TABLE_SCHEMA = '''
         content_hash TEXT,
         version INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMP,
+        gone_since TIMESTAMP,
         UNIQUE(wp_id, version)
     )
 '''
@@ -296,7 +308,14 @@ RAW_JSON_TABLES = ['posts', 'comments', 'pages', 'users', 'categories', 'tags']
 ADDITIVE_COLUMNS = (
     [(table, "raw_json", "TEXT") for table in RAW_JSON_TABLES]
     + [("media", "etag", "TEXT"), ("media", "last_modified", "TEXT")]
+    + [(table, "last_seen_at", "TIMESTAMP") for table in RAW_JSON_TABLES]
+    + [(table, "gone_since", "TIMESTAMP") for table in RAW_JSON_TABLES]
 )
+
+# SQLite's default SQLITE_MAX_VARIABLE_NUMBER is 999-ish; chunk wp_id lists
+# well under that so a single IN (...) statement never risks the ceiling
+# even for 100k+ comment ids across many chunked executes.
+_TOMBSTONE_CHUNK_SIZE = 500
 
 # =============================================================================
 # DATABASE MANAGER CLASS
@@ -632,6 +651,96 @@ class DatabaseManager:
                     data['content_hash'], version, data.get('raw_json')
                 ))
             
+            conn.commit()
+
+    # =============================================================================
+    # TOMBSTONES (last_seen_at / gone_since bookkeeping)
+    # =============================================================================
+
+    def all_wp_ids(self, content_type: str) -> set:
+        """Distinct wp_id present in a typed content table (any version)."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT DISTINCT wp_id FROM {content_type}")
+            return {row[0] for row in cursor.fetchall()}
+
+    def touch_last_seen(self, content_type: str, wp_ids: List[int]) -> None:
+        """
+        Mark the given wp_ids as seen on this run: set last_seen_at to now and
+        clear gone_since on the LATEST version row of each.
+
+        Called for every item successfully processed on any run (full or
+        filtered/limited), since actually observing an item on the live site
+        proves it's still there regardless of whether the walk was exhaustive.
+        Clearing gone_since here is what lets an item that reappears (or was
+        only hidden from an earlier, unauthenticated run) un-tombstone itself.
+
+        Chunks the wp_id list (~500 per statement) to stay well under
+        SQLite's default bound on placeholders per statement, and does the
+        whole batch in a single connection/transaction so 100k+ ids don't
+        cost one commit each.
+
+        Args:
+            content_type: Type of content (posts, comments, pages, etc.)
+            wp_ids: WordPress ids seen on this run
+        """
+        self._stamp_latest_rows(
+            content_type, "last_seen_at = CURRENT_TIMESTAMP, gone_since = NULL",
+            "", wp_ids)
+
+    def mark_gone(self, content_type: str, wp_ids: List[int]) -> None:
+        """
+        Tombstone the given wp_ids: set gone_since to now on the LATEST
+        version row of each, but only where gone_since is still NULL (first
+        disappearance wins — a later walk that sees the item again clears it
+        via touch_last_seen rather than this method overwriting the date).
+
+        Never deletes or otherwise modifies archived content — gone_since is
+        pure bookkeeping alongside the untouched row.
+
+        CAVEAT: this only means "not visible to this run's credentials, on
+        a full unfiltered walk." An anonymous (unauthenticated) run can't see
+        pending/private/trashed items via the REST API, so gone_since is not
+        proof the item was deleted on the live site — it may simply be hidden
+        from the credentials this run used. Callers should only invoke this
+        after a full, unfiltered, error-free walk.
+
+        Args:
+            content_type: Type of content (posts, comments, pages, etc.)
+            wp_ids: WordPress ids not observed on this run's full walk
+        """
+        self._stamp_latest_rows(
+            content_type, "gone_since = CURRENT_TIMESTAMP",
+            "AND gone_since IS NULL", wp_ids)
+
+    def _stamp_latest_rows(self, content_type: str, set_clause: str,
+                           extra_where: str, wp_ids: List[int]) -> None:
+        """
+        Apply ``SET set_clause`` to the latest-version row of each wp_id, in
+        chunks, one transaction for the whole batch.
+
+        The latest-version restriction is a correlated subquery so each wp_id
+        binds exactly once per statement — a chunk of 500 uses 500 bound
+        parameters, staying under SQLite's classic 999 default cap on
+        placeholders (older builds enforce it even though modern ones allow
+        far more).
+        """
+        if not wp_ids:
+            return
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            for i in range(0, len(wp_ids), _TOMBSTONE_CHUNK_SIZE):
+                chunk = wp_ids[i:i + _TOMBSTONE_CHUNK_SIZE]
+                placeholders = ",".join("?" * len(chunk))
+                cursor.execute(f"""
+                    UPDATE {content_type} SET {set_clause}
+                    WHERE wp_id IN ({placeholders})
+                    {extra_where}
+                    AND version = (
+                        SELECT MAX(version) FROM {content_type} latest
+                        WHERE latest.wp_id = {content_type}.wp_id
+                    )
+                """, chunk)
             conn.commit()
 
     # =============================================================================
