@@ -240,6 +240,28 @@ def test_full_clean_walk_marks_missing_items_gone(archiver):
     assert stats["gone"] == 1
 
 
+def test_undercounting_walk_does_not_mark_gone(archiver):
+    """A walk that returns fewer items than its own X-WP-Total (missing > 0)
+    is not trustworthy evidence of deletion — the API itself says items exist
+    that the walk didn't deliver, so nothing may be tombstoned."""
+    seed_stub = _StubPostsAPI(
+        pages=[[make_post(1), make_post(2), make_post(3)]],
+        total_count=3, total_pages_count=1)
+    archiver.archive_content(seed_stub, "posts")
+
+    # API claims 5 items but delivers only 2: posts 1-2 seen, 3 unseen —
+    # but missing=3 must veto the tombstone pass entirely.
+    walk_stub = _StubPostsAPI(
+        pages=[[make_post(1), make_post(2)]],
+        total_count=5, total_pages_count=1)
+    stats = archiver.archive_content(walk_stub, "posts")
+
+    assert stats["missing"] == 3
+    assert stats["gone"] == 0
+    rows = _latest_rows(archiver.db.db_path)
+    assert rows[3]["gone_since"] is None
+
+
 # =============================================================================
 # 7. archive_content: limited walk marks nothing gone
 # =============================================================================

@@ -163,15 +163,16 @@ class WordPressArchiver:
 
         # Tombstoning: only trustworthy after a full, unfiltered,
         # error-free walk — a --limit run, an after_date filter, a page
-        # error (incomplete), or per-item errors all mean this walk didn't
-        # see everything, so "not seen" wouldn't mean "not there".
+        # error (incomplete), per-item errors, or an undercount against
+        # X-WP-Total (missing) all mean this walk didn't see everything,
+        # so "not seen" wouldn't mean "not there".
         #
         # CAVEAT even then: without authentication the REST API hides
         # pending/private/trashed items from the response entirely, so
         # gone_since here means "not visible to this run's credentials",
         # not proof the item was deleted on the live site.
         if (limit is None and after_iso is None and stats["incomplete"] == 0
-                and stats["errors"] == 0):
+                and stats["errors"] == 0 and stats["missing"] == 0):
             vanished = self.db.all_wp_ids(content_type) - seen
             if vanished:
                 self.db.mark_gone(content_type, sorted(vanished))
