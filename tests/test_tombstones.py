@@ -56,7 +56,8 @@ class _StubPostsAPI:
         self.total_pages_count = total_pages_count
         self.raise_on_page = raise_on_page
 
-    def get_posts(self, page: int = 1, per_page: int = 100, after=None) -> WordPressResponse:
+    def get_posts(self, page: int = 1, per_page: int = 100, after=None,
+                  date_field='modified') -> WordPressResponse:
         if self.raise_on_page is not None and page == self.raise_on_page:
             raise WordPressAPIError(f"simulated failure fetching page {page}")
         idx = page - 1
