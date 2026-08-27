@@ -184,12 +184,17 @@ class WordPressAPI:
     def get_posts(self, page: int = 1, per_page: int = 10, after: Optional[str] = None) -> WordPressResponse:
         """
         Retrieve a paginated list of posts ordered by date ascending.
-        
+
         Args:
             page: Page number to fetch
             per_page: Number of posts per page (default: 10)
-            after: ISO 8601 formatted date-time string to fetch posts after this date
-            
+            after: ISO 8601 date-time; sent as ``modified_after`` so the filter
+                catches posts *edited* since that date, not just ones published
+                since it (a new post's modified date equals its publish date,
+                so nothing the old ``after`` matched is lost). WordPress < 5.7
+                ignores the unknown param and returns everything — slower but
+                never lossy.
+
         Returns:
             WordPressResponse object
         """
@@ -200,7 +205,7 @@ class WordPressAPI:
             "order": "asc"
         }
         if after:
-            params["after"] = after
+            params["modified_after"] = after
 
         return self._make_request("GET", "posts", params=self._maybe_auth_params(params))
 
@@ -262,8 +267,9 @@ class WordPressAPI:
         Args:
             page: Page number to fetch
             per_page: Number of pages per page (default: 10)
-            after: ISO 8601 formatted date-time string to fetch pages after this date
-            
+            after: ISO 8601 date-time; sent as ``modified_after`` (see
+                get_posts — same reasoning, same WP < 5.7 fallback)
+
         Returns:
             WordPressResponse object
         """
@@ -274,7 +280,7 @@ class WordPressAPI:
             "order": "asc"
         }
         if after:
-            params["after"] = after
+            params["modified_after"] = after
 
         return self._make_request("GET", "pages", params=self._maybe_auth_params(params))
 
