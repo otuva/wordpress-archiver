@@ -11,9 +11,12 @@ Tests for the media-metadata spec:
   under route '/wp/v2/media', using the same dedup as the generic endpoint
   walker (via the shared _store_api_object helper): first sight -> version 1
   (stats['meta_new'] += 1 when stats is given and the key is present); JSON
-  changed -> version+1 (stats['meta_updated']); unchanged -> no new row.
-- _store_api_object(route, item, stats=None, ...) implements that dedup and
-  returns 'new'/'updated'/'skipped'.
+  changed -> version+1 (stats['meta_updated']); unchanged -> no new row
+  (stats['meta_unchanged'] when present).
+- _store_api_object(route, item, index=None) implements that dedup and returns
+  'new'/'updated'/'skipped'; counting is the caller's job. `index` is an
+  optional prefetched {wp_id: (version, content_hash)} map (see
+  get_api_object_hash_index) that replaces the per-item DB read.
 - api.download_binary returns a 5-tuple: (content, content_type, http_status,
   etag, last_modified).
 
@@ -271,28 +274,31 @@ def test_scan_media_endpoint_rescan_changed_item_bumps_version(archiver, db_path
 
 def test_store_api_object_new_skipped_updated(archiver):
     item = make_media_item(900, filename="doc.jpg", alt_text="Original")
-    stats = dict(meta_new=0, meta_updated=0)
 
-    assert archiver._store_api_object(
-        "/wp/v2/media", item, stats=stats,
-        new_key="meta_new", updated_key="meta_updated") == "new"
-    assert archiver._store_api_object(
-        "/wp/v2/media", item, stats=stats,
-        new_key="meta_new", updated_key="meta_updated") == "skipped"
+    assert archiver._store_api_object("/wp/v2/media", item) == "new"
+    assert archiver._store_api_object("/wp/v2/media", item) == "skipped"
 
     changed = make_media_item(900, filename="doc.jpg", alt_text="Different")
-    assert archiver._store_api_object(
-        "/wp/v2/media", changed, stats=stats,
-        new_key="meta_new", updated_key="meta_updated") == "updated"
-
-    assert stats == {"meta_new": 1, "meta_updated": 1}
+    assert archiver._store_api_object("/wp/v2/media", changed) == "updated"
 
 
-def test_store_api_object_does_not_raise_when_stats_is_none(archiver):
+def test_store_api_object_prefetched_index_stays_current(archiver):
+    # With a prefetched hash index the helper must dedup against (and keep
+    # updating) the index instead of hitting the DB per item.
     item = make_media_item(901, filename="doc2.jpg", alt_text="Original")
-    # First call: new. Second call with stats=None must not raise either.
-    assert archiver._store_api_object("/wp/v2/media", item, stats=None) == "new"
-    assert archiver._store_api_object("/wp/v2/media", item, stats=None) == "skipped"
+    index = archiver.db.get_api_object_hash_index("/wp/v2/media")
+    assert index == {}
+
+    assert archiver._store_api_object("/wp/v2/media", item, index=index) == "new"
+    assert 901 in index and index[901][0] == 1
+    assert archiver._store_api_object("/wp/v2/media", item, index=index) == "skipped"
+
+    changed = make_media_item(901, filename="doc2.jpg", alt_text="Different")
+    assert archiver._store_api_object("/wp/v2/media", changed, index=index) == "updated"
+    assert index[901][0] == 2
+
+    # A freshly prefetched index reflects what actually landed in the DB.
+    assert archiver.db.get_api_object_hash_index("/wp/v2/media")[901] == index[901]
 
 
 # =============================================================================
