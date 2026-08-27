@@ -38,6 +38,18 @@ def _new_stats(**extra) -> Dict[str, int]:
     base.update(extra)
     return base
 
+# Fields that actually feed calculate_content_hash per content type (see
+# ContentProcessor.extract_content_data) — used to tell a genuine content
+# edit apart from a hash produced by a different hashing algorithm.
+HASH_SOURCE_FIELDS = {
+    'posts': ('title', 'content', 'excerpt', 'status'),
+    'pages': ('title', 'content', 'excerpt', 'status'),
+    'comments': ('content', 'status'),
+    'users': ('name', 'description', 'url'),
+    'categories': ('name', 'description', 'slug'),
+    'tags': ('name', 'description', 'slug'),
+}
+
 
 class WordPressArchiver:
     """Main archiver class with improved structure and error handling."""
@@ -159,26 +171,55 @@ class WordPressArchiver:
             stats["new"] += 1
             logger.info(f"New {content_type}: {self._get_item_title(content_data, content_type)}")
         elif existing_hash != content_data['content_hash']:
-            # Content changed, create new version
-            latest_version = self.db.get_latest_version(content_type, content_data['wp_id'])
-            new_version = latest_version['version'] + 1 if latest_version else 2
-
-            self.db.insert_content(content_type, content_data, version=new_version)
-            stats["updated"] += 1
-            logger.info(f"Updated {content_type}: {self._get_item_title(content_data, content_type)}")
+            latest = self.db.get_latest_version(content_type, content_data['wp_id'])
+            if latest and self._hash_source_unchanged(content_type, latest, content_data):
+                # Same content, different hash — the hashing algorithm changed
+                # underneath us, not the content. Restamp in place rather than
+                # minting a spurious new version.
+                self.db.update_content_hash(
+                    content_type, content_data['wp_id'], latest['version'],
+                    content_data['content_hash'])
+                logger.debug(f"rehashed {content_type} {content_data['wp_id']} in place")
+                self._refresh_latest_metadata(content_type, content_data, stats)
+            else:
+                # Content changed, create new version
+                new_version = latest['version'] + 1 if latest else 2
+                self.db.insert_content(content_type, content_data, version=new_version)
+                stats["updated"] += 1
+                logger.info(f"Updated {content_type}: {self._get_item_title(content_data, content_type)}")
         else:
             # Visible content unchanged: keep the newest metadata current on the
             # latest version in place (no new version, history stays append-only).
-            if content_data.get('raw_json') is not None:
-                replaced = self.db.update_latest_raw_json(
-                    content_type, content_data['wp_id'], content_data['raw_json'],
-                    categories=content_data.get('categories'), tags=content_data.get('tags'))
-                if replaced:
-                    stats["refreshed"] += 1
+            self._refresh_latest_metadata(content_type, content_data, stats)
 
         # If processing a post, fetch and save category/tag details
         if content_type == 'posts' and api:
             self._process_post_taxonomies(content_data, api)
+
+    def _hash_source_unchanged(self, content_type: str, latest: Dict[str, Any],
+                               content_data: Dict[str, Any]) -> bool:
+        """True if every field that feeds this content type's hash is byte-equal
+        between the stored latest version and the freshly fetched data. None
+        (SQLite NULL) and '' are treated as equal, since a DB NULL and an
+        extract_content_data '' both mean "no value" for these fields."""
+        for field in HASH_SOURCE_FIELDS[content_type]:
+            old = latest.get(field) or ''
+            new = content_data.get(field) or ''
+            if old != new:
+                return False
+        return True
+
+    def _refresh_latest_metadata(self, content_type: str, content_data: Dict[str, Any],
+                                 stats: Dict[str, int]) -> None:
+        """Refresh raw_json (and post category/tag junctions) on the latest
+        version row in place, for content whose hash-source fields didn't
+        change — used by both the unchanged branch and the rehash-in-place path."""
+        if content_data.get('raw_json') is not None:
+            replaced = self.db.update_latest_raw_json(
+                content_type, content_data['wp_id'], content_data['raw_json'],
+                categories=content_data.get('categories'), tags=content_data.get('tags'))
+            if replaced:
+                stats["refreshed"] += 1
     
     def _process_post_taxonomies(self, post_data: Dict[str, Any], api: WordPressAPI):
         """
