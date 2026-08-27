@@ -639,16 +639,24 @@ class DatabaseManager:
 
         Returns:
             True if raw_json was actually replaced, False if there was no
-            latest version row or the stored raw_json was already identical.
+            latest version row, raw_json is None, or the stored raw_json
+            was already identical.
         """
+        if raw_json is None:
+            return False
+
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            # Write lock up front so the latest-version read and the update
+            # act on the same row even if another process inserts a version.
+            cursor.execute("BEGIN IMMEDIATE")
             cursor.execute(f"""
                 SELECT version, raw_json FROM {content_type}
                 WHERE wp_id = ? ORDER BY version DESC LIMIT 1
             """, (wp_id,))
             row = cursor.fetchone()
             if row is None:
+                conn.commit()
                 return False
 
             latest_version, old_raw_json = row[0], row[1]
@@ -669,43 +677,42 @@ class DatabaseManager:
 
             if content_type == 'posts':
                 if categories is not None:
-                    cursor.execute('''
-                        SELECT category_wp_id FROM post_categories
-                        WHERE post_wp_id = ? AND version = ?
-                    ''', (wp_id, latest_version))
-                    existing_categories = {r[0] for r in cursor.fetchall()}
-                    if existing_categories != set(categories):
-                        cursor.execute('''
-                            DELETE FROM post_categories
-                            WHERE post_wp_id = ? AND version = ?
-                        ''', (wp_id, latest_version))
-                        for category_id in categories:
-                            cursor.execute('''
-                                INSERT OR IGNORE INTO post_categories
-                                (post_wp_id, category_wp_id, version)
-                                VALUES (?, ?, ?)
-                            ''', (wp_id, category_id, latest_version))
-
+                    self._sync_post_junction(
+                        cursor, 'post_categories', 'category_wp_id',
+                        wp_id, latest_version, categories)
                 if tags is not None:
-                    cursor.execute('''
-                        SELECT tag_wp_id FROM post_tags
-                        WHERE post_wp_id = ? AND version = ?
-                    ''', (wp_id, latest_version))
-                    existing_tags = {r[0] for r in cursor.fetchall()}
-                    if existing_tags != set(tags):
-                        cursor.execute('''
-                            DELETE FROM post_tags
-                            WHERE post_wp_id = ? AND version = ?
-                        ''', (wp_id, latest_version))
-                        for tag_id in tags:
-                            cursor.execute('''
-                                INSERT OR IGNORE INTO post_tags
-                                (post_wp_id, tag_wp_id, version)
-                                VALUES (?, ?, ?)
-                            ''', (wp_id, tag_id, latest_version))
+                    self._sync_post_junction(
+                        cursor, 'post_tags', 'tag_wp_id',
+                        wp_id, latest_version, tags)
 
             conn.commit()
             return replaced
+
+    def _sync_post_junction(self, cursor, table: str, id_column: str,
+                            post_wp_id: int, version: int, ids: List[int]):
+        """
+        Bring a post junction table (post_categories/post_tags) for one
+        (post, version) in line with the given membership ids, touching only
+        rows that actually changed so unchanged rows keep their identity.
+        """
+        cursor.execute(f'''
+            SELECT {id_column} FROM {table}
+            WHERE post_wp_id = ? AND version = ?
+        ''', (post_wp_id, version))
+        existing = {r[0] for r in cursor.fetchall()}
+        wanted = set(ids)
+
+        for removed_id in existing - wanted:
+            cursor.execute(f'''
+                DELETE FROM {table}
+                WHERE post_wp_id = ? AND {id_column} = ? AND version = ?
+            ''', (post_wp_id, removed_id, version))
+        for added_id in wanted - existing:
+            cursor.execute(f'''
+                INSERT OR IGNORE INTO {table}
+                (post_wp_id, {id_column}, version)
+                VALUES (?, ?, ?)
+            ''', (post_wp_id, added_id, version))
 
     # --- media -----------------------------------------------------------------
 
