@@ -226,73 +226,54 @@ def extract_video_embeds(html_text: str) -> List[str]:
     return out
 
 
+# The fields whose values feed each content type's content_hash — the same
+# fields, in the same sense, that extract_content_data concatenates into
+# hash_input below. The archiver byte-compares exactly these fields to tell
+# a hashing-algorithm change apart from a genuine content edit, so any change
+# to a hash_input MUST be mirrored here.
+HASH_SOURCE_FIELDS = {
+    'posts': ('title', 'content', 'excerpt', 'status'),
+    'pages': ('title', 'content', 'excerpt', 'status'),
+    'comments': ('content', 'status'),
+    'users': ('name', 'description', 'url'),
+    'categories': ('name', 'description', 'slug'),
+    'tags': ('name', 'description', 'slug'),
+}
+
+
 class ContentProcessor:
     """Handles content processing, normalization, and change detection."""
     
     def __init__(self):
         """Initialize the content processor."""
-        self.dynamic_patterns = [
-            # ShareThis and social sharing widgets
-            (r'<div[^>]*class="[^"]*sharethis[^"]*"[^>]*>.*?</div>', ''),
-            (r'<div[^>]*class="[^"]*(?:social-share|share-buttons|social-media)[^"]*"[^>]*>.*?</div>', ''),
-            
-            # Dynamic ad elements
-            (r'<div[^>]*class="[^"]*(?:adsbygoogle|advertisement|ad-container)[^"]*"[^>]*>.*?</div>', ''),
-            
-            # Script tags with dynamic content
-            (r'<script[^>]*>.*?</script>', ''),
-            
-            # Inline styles that might be dynamically generated
-            (r'style="[^"]*"', ''),
-            
-            # Data attributes that might be dynamic
-            (r'data-[^=]*="[^"]*"', ''),
-            
-            # Empty divs and spans left after cleaning
-            (r'<div[^>]*>\s*</div>', ''),
-            (r'<span[^>]*>\s*</span>', ''),
-            
-            # WordPress-specific dynamic elements
-            (r'<div[^>]*class="[^"]*wp-block[^"]*"[^>]*>.*?</div>', ''),
-            (r'<div[^>]*id="[^"]*wp-block[^"]*"[^>]*>.*?</div>', ''),
-            
-            # Analytics and tracking scripts
-            (r'<div[^>]*class="[^"]*(?:analytics|tracking|gtag)[^"]*"[^>]*>.*?</div>', ''),
-            
-            # Dynamic timestamps and dates
-            (r'<time[^>]*datetime="[^"]*"[^>]*>.*?</time>', ''),
-            
-            # Dynamic IDs and classes that change between requests
-            (r'id="[^"]*[0-9]{10,}[^"]*"', ''),
-            (r'class="[^"]*[0-9]{10,}[^"]*"', ''),
-        ]
-    
+
     def normalize_content(self, content: str) -> str:
         """
-        Normalize content by removing dynamic elements that change between requests.
-        
+        Normalize content's textual representation for consistent hashing.
+
+        Only neutralizes encoding/whitespace differences (HTML entity form,
+        run-length of whitespace) — it never removes content. This is
+        deliberate: change detection must be lossless, so anything that
+        actually differs between fetches has to change the hash.
+
         Args:
             content: Raw HTML content from WordPress
-            
+
         Returns:
             Normalized content for consistent hashing
         """
         if not content:
             return ""
-        
+
         normalized = content
-        
-        # Apply all dynamic pattern removals
-        for pattern, replacement in self.dynamic_patterns:
-            normalized = re.sub(pattern, replacement, normalized, flags=re.DOTALL | re.IGNORECASE)
-        
+
         # Decode HTML entities to their actual characters
         normalized = html.unescape(normalized)
-        
+
         # Normalize whitespace
         normalized = re.sub(r'\s+', ' ', normalized)
         normalized = normalized.strip()
-        
+
         return normalized
     
     def calculate_content_hash(self, content: str) -> str:
@@ -354,11 +335,16 @@ class ContentProcessor:
     def extract_content_data(self, wp_item: Dict[str, Any], content_type: str) -> Dict[str, Any]:
         """
         Extract and normalize content data from WordPress API response.
-        
+
+        Each type's hash_input below concatenates exactly the fields listed in
+        HASH_SOURCE_FIELDS — keep the two in lockstep, since the archiver's
+        rehash-in-place byte-compare relies on that list naming precisely the
+        fields that feed the hash.
+
         Args:
             wp_item: Raw WordPress API response item
             content_type: Type of content (posts, comments, pages, etc.)
-            
+
         Returns:
             Normalized content data dictionary
         """

@@ -688,6 +688,36 @@ class DatabaseManager:
             conn.commit()
             return replaced
 
+    def update_content_hash(self, content_type: str, wp_id: int, version: int,
+                            content_hash: str) -> None:
+        """
+        Restamp content_hash on one existing version row in place.
+
+        content_hash is derived bookkeeping (an artifact of the hashing
+        algorithm), not archived content — restamping it after a hashing
+        change is lossless and never touches the archived fields themselves.
+
+        Args:
+            content_type: Type of content (posts, comments, pages, etc.)
+            wp_id: WordPress ID of the content
+            version: Version number of the row to restamp
+            content_hash: New content_hash to store
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            # Write lock + latest-only guard: if another writer appended a
+            # newer version since the caller read `version`, restamping that
+            # now-historical row would corrupt its bookkeeping — skip instead
+            # (the stale hash on an old version is never read back).
+            cursor.execute("BEGIN IMMEDIATE")
+            cursor.execute(f"""
+                UPDATE {content_type} SET content_hash = ?
+                WHERE wp_id = ? AND version = ? AND version = (
+                    SELECT MAX(version) FROM {content_type} WHERE wp_id = ?
+                )
+            """, (content_hash, wp_id, version, wp_id))
+            conn.commit()
+
     def _sync_post_junction(self, cursor, table: str, id_column: str,
                             post_wp_id: int, version: int, ids: List[int]):
         """
