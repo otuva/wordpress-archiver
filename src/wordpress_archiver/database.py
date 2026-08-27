@@ -180,6 +180,8 @@ MEDIA_TABLE_SCHEMA = '''
         byte_size INTEGER DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'ok',
         http_status INTEGER,
+        etag TEXT,
+        last_modified TEXT,
         fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
 '''
@@ -272,6 +274,13 @@ DATABASE_INDEXES = [
 
 # Versioned content tables that gain a raw_json column via migration.
 RAW_JSON_TABLES = ['posts', 'comments', 'pages', 'users', 'categories', 'tags']
+
+# Every column added to existing databases via migration, as
+# (table, column, sql_type) triples — the single list _apply_migrations walks.
+ADDITIVE_COLUMNS = (
+    [(table, "raw_json", "TEXT") for table in RAW_JSON_TABLES]
+    + [("media", "etag", "TEXT"), ("media", "last_modified", "TEXT")]
+)
 
 # =============================================================================
 # DATABASE MANAGER CLASS
@@ -367,10 +376,10 @@ class DatabaseManager:
         Only additive ALTER TABLE ADD COLUMN — never drops or rewrites data, so
         existing archives upgrade in place without loss.
         """
-        for table in RAW_JSON_TABLES:
-            if not self._column_exists(cursor, table, 'raw_json'):
-                cursor.execute(f"ALTER TABLE {table} ADD COLUMN raw_json TEXT")
-                logger.info(f"Migration: added {table}.raw_json")
+        for table, column, sql_type in ADDITIVE_COLUMNS:
+            if not self._column_exists(cursor, table, column):
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}")
+                logger.info(f"Migration: added {table}.{column}")
 
     def _create_indexes(self, cursor):
         """Create database indexes for better query performance."""
@@ -776,17 +785,20 @@ class DatabaseManager:
 
     def insert_media(self, url_hash: str, url: str, content: Optional[bytes],
                      content_hash: Optional[str], mime_type: Optional[str],
-                     status: str, http_status: Optional[int]):
+                     status: str, http_status: Optional[int],
+                     etag: Optional[str] = None, last_modified: Optional[str] = None):
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT OR REPLACE INTO media
-                (url_hash, url, content, content_hash, mime_type, byte_size, status, http_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (url_hash, url, content, content_hash, mime_type, byte_size, status, http_status,
+                 etag, last_modified)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 url_hash, url, content, content_hash,
                 mime_type or 'application/octet-stream',
-                len(content) if content else 0, status, http_status
+                len(content) if content else 0, status, http_status,
+                etag, last_modified
             ))
             conn.commit()
 
@@ -858,6 +870,19 @@ class DatabaseManager:
             """, (endpoint, wp_id))
             row = cursor.fetchone()
             return dict(row) if row else None
+
+    def get_api_object_hash_index(self, endpoint: str) -> Dict[int, tuple]:
+        """{wp_id: (latest_version, content_hash)} for one endpoint, in a single
+        query — lets a large-collection walk dedup without a DB read per item."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT wp_id, version, content_hash FROM api_objects
+                WHERE endpoint = ?
+                ORDER BY version ASC
+            """, (endpoint,))
+            # Ascending order: the last row seen per wp_id is its latest version.
+            return {row[0]: (row[1], row[2]) for row in cursor.fetchall()}
 
     def insert_api_object(self, endpoint: str, wp_id: Optional[int], raw_json: str,
                           content_hash: Optional[str], version: int = 1):

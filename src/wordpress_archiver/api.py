@@ -400,8 +400,11 @@ class WordPressAPI:
         Download a binary asset.
 
         Returns:
-            (content_bytes, content_type, http_status). content_bytes is None when
-            the asset exceeds max_size_bytes (caller records it as 'oversized').
+            (content_bytes, content_type, http_status, etag, last_modified).
+            content_bytes is None when the asset exceeds max_size_bytes (caller
+            records it as 'oversized'). etag/last_modified are the response's
+            ``ETag``/``Last-Modified`` headers, or None when the server didn't
+            send them.
 
         Raises:
             WordPressAPIError: on network/HTTP failure (caller records 'failed').
@@ -421,10 +424,12 @@ class WordPressAPI:
                 response.raise_for_status()
 
                 content_type = response.headers.get("Content-Type", "application/octet-stream")
+                etag = response.headers.get("ETag")
+                last_modified = response.headers.get("Last-Modified")
                 declared = response.headers.get("Content-Length")
                 if declared and int(declared) > max_size_bytes:
                     response.close()
-                    return None, content_type, status
+                    return None, content_type, status, etag, last_modified
 
                 chunks = []
                 total = 0
@@ -434,9 +439,9 @@ class WordPressAPI:
                     total += len(chunk)
                     if total > max_size_bytes:
                         response.close()
-                        return None, content_type, status
+                        return None, content_type, status, etag, last_modified
                     chunks.append(chunk)
-                return b"".join(chunks), content_type, status
+                return b"".join(chunks), content_type, status, etag, last_modified
 
         except requests.exceptions.RequestException as e:
             # Timeout/ConnectionError/HTTPError are all RequestException subclasses;

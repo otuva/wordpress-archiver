@@ -324,20 +324,44 @@ class WordPressArchiver:
         return urls
 
     def _scan_media_endpoint(self, api: WordPressAPI, site_url: Optional[str],
-                             limit: Optional[int] = None) -> set:
+                             limit: Optional[int] = None,
+                             stats: Optional[Dict[str, int]] = None) -> set:
         """Enumerate the /wp/v2/media attachment list (originals + thumbnail sizes).
+
+        Also captures each attachment's JSON (alt_text, caption, media_details,
+        post parent, ...) losslessly into api_objects — a walk of this endpoint
+        is the only place that metadata is ever seen, so it's stored here rather
+        than discarded once the URLs are pulled out of it.
 
         ``limit`` stops the pagination early once enough candidates are gathered,
         so a ``--limit`` preview run doesn't walk a site's entire media library.
         """
         urls: set = set()
         page = 1
+        # Metadata outcome → archive_media stats counter ('skipped' only counts
+        # when the caller's dict carries the key).
+        meta_keys = {'new': 'meta_new', 'updated': 'meta_updated',
+                     'skipped': 'meta_unchanged'}
+        meta_index = self.db.get_api_object_hash_index('/wp/v2/media')
         try:
             while True:
                 response = api.get_media(page=page, per_page=100)
                 if not response.data:
                     break
                 for item in response.data:
+                    # Metadata capture must never break URL enumeration or the
+                    # asset downloads that follow it — a bad item/DB hiccup is
+                    # logged and skipped, not raised.
+                    try:
+                        outcome = self._store_api_object('/wp/v2/media', item,
+                                                         index=meta_index)
+                        key = meta_keys[outcome]
+                        if stats is not None and key in stats:
+                            stats[key] += 1
+                    except Exception as e:
+                        logger.warning(
+                            f"Could not store media metadata for item "
+                            f"{item.get('id') if isinstance(item, dict) else '?'}: {e}")
                     source = item.get('source_url')
                     if source:
                         norm = normalize_asset_url(source, site_url)
@@ -381,7 +405,8 @@ class WordPressArchiver:
         (limit=None) downloads everything regardless.
         """
         stats = _new_stats(discovered=0, downloaded=0, skipped=0, oversized=0,
-                           dead_skipped=0)
+                           dead_skipped=0, meta_new=0, meta_updated=0,
+                           meta_unchanged=0)
         site_url = self.db.get_meta('site_url') or (api.domain if api else None)
         known = self.db.media_url_hashes()
         dead = set() if retry_failed_media else self.db.permanently_failed_media_hashes()
@@ -396,15 +421,18 @@ class WordPressArchiver:
                 stats["dead_skipped"] += 1
                 return
             try:
-                content, content_type, http_status = api.download_binary(url, max_size_bytes)
+                content, content_type, http_status, etag, last_modified = api.download_binary(
+                    url, max_size_bytes)
                 if content is None:
-                    self.db.insert_media(h, url, None, None, content_type, 'oversized', http_status)
+                    self.db.insert_media(h, url, None, None, content_type, 'oversized', http_status,
+                                         etag=etag, last_modified=last_modified)
                     stats["oversized"] += 1
                     logger.warning(f"Oversized media skipped: {url}")
                     return
                 content_hash = hashlib.sha256(content).hexdigest()
                 mime = (content_type or 'application/octet-stream').split(';')[0].strip()
-                self.db.insert_media(h, url, content, content_hash, mime, 'ok', http_status)
+                self.db.insert_media(h, url, content, content_hash, mime, 'ok', http_status,
+                                     etag=etag, last_modified=last_modified)
                 known.add(h)
                 stats["downloaded"] += 1
                 stats["new"] += 1
@@ -422,7 +450,7 @@ class WordPressArchiver:
         referenced = self._scan_content_for_urls(api, walk_media=False)
         # The broad media-library walk is the only part `limit` bounds. Drop URLs
         # already covered by `referenced` so they don't consume the library cap.
-        library = self._scan_media_endpoint(api, site_url, limit=limit) if api else set()
+        library = self._scan_media_endpoint(api, site_url, limit=limit, stats=stats) if api else set()
         library -= referenced
         stats["discovered"] = len(referenced) + len(library)
 
@@ -708,6 +736,40 @@ class WordPressArchiver:
             out.append(path)
         return out
 
+    def _store_api_object(self, route: str, item: dict,
+                          index: Optional[Dict[int, tuple]] = None) -> str:
+        """Store one REST object into the versioned api_objects table.
+
+        Dedup: a first-seen wp_id inserts version 1; changed content bumps the
+        version; unchanged content_hash is skipped. Returns 'new', 'updated',
+        or 'skipped' — counting is the caller's job, keyed off that outcome.
+
+        ``index`` is an optional {wp_id: (version, content_hash)} prefetch (see
+        get_api_object_hash_index) consulted instead of a per-item DB read and
+        kept current after inserts — pass it when walking a large collection so
+        an unchanged re-walk costs one query, not one round trip per item.
+        """
+        raw = json.dumps(item, ensure_ascii=False)
+        wp_id = self._api_object_id(item, raw)
+        content_hash = hashlib.sha256(raw.encode('utf-8')).hexdigest()
+        if index is not None:
+            existing = index.get(wp_id)
+        else:
+            row = self.db.get_api_object_latest(route, wp_id)
+            existing = (row['version'], row.get('content_hash')) if row else None
+        if existing is None:
+            self.db.insert_api_object(route, wp_id, raw, content_hash, version=1)
+            outcome, version = 'new', 1
+        elif existing[1] != content_hash:
+            version = existing[0] + 1
+            self.db.insert_api_object(route, wp_id, raw, content_hash, version=version)
+            outcome = 'updated'
+        else:
+            return 'skipped'
+        if index is not None:
+            index[wp_id] = (version, content_hash)
+        return outcome
+
     def _archive_endpoint(self, api: WordPressAPI, route: str, stats: Dict[str, int],
                           limit: Optional[int] = None) -> Optional[str]:
         """Paginate one collection route and store each object in api_objects.
@@ -749,19 +811,7 @@ class WordPressArchiver:
                     break
                 stats["discovered"] += 1
                 route_count += 1
-                raw = json.dumps(item, ensure_ascii=False)
-                wp_id = self._api_object_id(item, raw)
-                content_hash = hashlib.sha256(raw.encode('utf-8')).hexdigest()
-                existing = self.db.get_api_object_latest(route, wp_id)
-                if existing is None:
-                    self.db.insert_api_object(route, wp_id, raw, content_hash, version=1)
-                    stats["new"] += 1
-                elif existing.get('content_hash') != content_hash:
-                    self.db.insert_api_object(route, wp_id, raw, content_hash,
-                                              version=existing['version'] + 1)
-                    stats["updated"] += 1
-                else:
-                    stats["skipped"] += 1
+                stats[self._store_api_object(route, item)] += 1
 
             if limit and route_count >= limit:
                 break
