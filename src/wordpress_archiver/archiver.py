@@ -68,7 +68,7 @@ class WordPressArchiver:
         """
         logger.info(f"Starting archive of {content_type}")
         
-        stats = _new_stats()
+        stats = _new_stats(refreshed=0)
         page = 1
         consecutive_empty_pages = 0
         per_page = min(100, limit) if limit else 100
@@ -170,8 +170,11 @@ class WordPressArchiver:
             # Visible content unchanged: keep the newest metadata current on the
             # latest version in place (no new version, history stays append-only).
             if content_data.get('raw_json') is not None:
-                self.db.update_latest_raw_json(
-                    content_type, content_data['wp_id'], content_data['raw_json'])
+                replaced = self.db.update_latest_raw_json(
+                    content_type, content_data['wp_id'], content_data['raw_json'],
+                    categories=content_data.get('categories'), tags=content_data.get('tags'))
+                if replaced:
+                    stats["refreshed"] += 1
 
         # If processing a post, fetch and save category/tag details
         if content_type == 'posts' and api:
