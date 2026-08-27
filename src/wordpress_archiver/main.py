@@ -44,16 +44,25 @@ def setup_logging(verbose: bool = False):
     )
 
 
-def signal_handler(sig, frame):
+def _build_sigint_handler(archiver, domain, all_stats, logger):
     """
-    Handle interrupt signals gracefully.
-    
-    Provides user-friendly feedback when the archive operation is interrupted.
+    Build the SIGINT handler for an in-flight archive run.
+
+    On Ctrl+C it saves a comprehensive session marked interrupted (so the DB
+    records that the run stopped early) before exiting with the conventional
+    SIGINT status 130. A failing save never masks the exit itself.
     """
-    print("\n\n⚠️  Archive operation interrupted by user (Ctrl+C)")
-    print("💾 Progress has been saved. You can resume later.")
-    print("📊 Check the web interface to see what was archived.")
-    sys.exit(0)
+    def _interrupt_handler(sig, frame):
+        print("\n\n⚠️  Archive operation interrupted by user (Ctrl+C)")
+        try:
+            archiver.save_comprehensive_session(
+                domain, list(all_stats.keys()), all_stats, interrupted=True)
+        except Exception as e:
+            logger.error(f"❌ Failed to save session on interrupt: {e}")
+        print("💾 Progress has been saved. You can resume later.")
+        print("📊 Check the web interface to see what was archived.")
+        sys.exit(130)
+    return _interrupt_handler
 
 
 def parse_date(date_string: str) -> datetime:
@@ -88,18 +97,19 @@ def parse_date(date_string: str) -> datetime:
 def archive_command(args):
     """
     Handle the archive command.
-    
+
     Archives WordPress content based on the provided arguments.
-    
+
+    Exit codes: 0 = clean success, 1 = fatal error (couldn't verify/connect to
+    the site), 2 = the run completed but with gaps (item errors, items missing
+    vs API totals, or a walk that ended early) — see the archive_failures table.
+
     Args:
         args: Parsed command line arguments
     """
     setup_logging(args.verbose)
     logger = logging.getLogger(__name__)
-    
-    # Set up signal handler for graceful interrupt
-    signal.signal(signal.SIGINT, signal_handler)
-    
+
     # Parse after_date if provided
     after_date = None
     if args.after_date:
@@ -159,6 +169,13 @@ def archive_command(args):
 
             # Archive each content type
             all_stats = {}
+
+            # Register the interrupt handler now that `archiver` and `all_stats`
+            # exist, so Ctrl+C saves a comprehensive session (marked interrupted)
+            # instead of silently dropping whatever was archived so far.
+            signal.signal(signal.SIGINT,
+                          _build_sigint_handler(archiver, args.domain, all_stats, logger))
+
             for content_type in content_types:
                 try:
                     logger.info(f"Archiving {content_type}...")
@@ -208,10 +225,27 @@ def archive_command(args):
             archiver.save_comprehensive_session(
                 args.domain, list(all_stats.keys()), all_stats
             )
-            
-            logger.info("\n🎉 Archive completed! Database: " + args.db)
+
+            # Honest exit: a run must never claim success while silently
+            # missing data. Aggregate across every content type archived.
+            total_errors = sum(s.get('errors', 0) for s in all_stats.values())
+            total_missing = sum(s.get('missing', 0) for s in all_stats.values())
+            any_incomplete = any(s.get('incomplete', 0) for s in all_stats.values())
+
             logger.info("🌐 Run 'python main.py web' to view the archived content in your browser.")
-            
+
+            if total_errors == 0 and total_missing == 0 and not any_incomplete:
+                logger.info("\n🎉 Archive completed! Database: " + args.db)
+            else:
+                summary = (f"{total_errors} item errors, {total_missing} items "
+                           f"missing vs API totals")
+                if any_incomplete:
+                    summary += ", walk(s) interrupted"
+                logger.warning(
+                    f"\n⚠️  Archive finished INCOMPLETE: {summary} — details: "
+                    f"archive_failures table (sqlite) in {args.db}")
+                sys.exit(2)
+
     except WordPressAPIError as e:
         logger.error(f"❌ API Error: {e}")
         archiver.save_failed_verification(args.domain, str(e))

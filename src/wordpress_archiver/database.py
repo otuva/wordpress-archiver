@@ -240,6 +240,21 @@ RAW_JSON_HISTORY_TABLE_SCHEMA = '''
     )
 '''
 
+# Every failure encountered during an archive run (per-item, per-page, per-taxonomy
+# lookup, or a post-walk completeness shortfall), so a run can never claim success
+# while silently missing data — the honest record behind main.py's exit code.
+ARCHIVE_FAILURES_TABLE_SCHEMA = '''
+    CREATE TABLE IF NOT EXISTS archive_failures (
+        id INTEGER PRIMARY KEY,
+        content_type TEXT NOT NULL,
+        wp_id INTEGER,
+        stage TEXT NOT NULL,
+        detail TEXT,
+        error TEXT,
+        occurred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+'''
+
 # =============================================================================
 # DATABASE INDEXES
 # =============================================================================
@@ -270,6 +285,7 @@ DATABASE_INDEXES = [
     ("idx_api_objects_wp_id", "api_objects", "wp_id"),
     ("idx_api_objects_endpoint_wpid_ver", "api_objects", "endpoint, wp_id, version"),
     ("idx_raw_json_history_item", "raw_json_history", "content_type, wp_id"),
+    ("idx_archive_failures_type", "archive_failures", "content_type, occurred_at"),
 ]
 
 # Versioned content tables that gain a raw_json column via migration.
@@ -359,6 +375,7 @@ class DatabaseManager:
             API_OBJECTS_TABLE_SCHEMA,
             ARCHIVE_META_TABLE_SCHEMA,
             RAW_JSON_HISTORY_TABLE_SCHEMA,
+            ARCHIVE_FAILURES_TABLE_SCHEMA,
         ]
 
         for schema in schemas:
@@ -944,6 +961,32 @@ class DatabaseManager:
             cursor.execute("SELECT value FROM archive_meta WHERE key = ?", (key,))
             row = cursor.fetchone()
             return row[0] if row else None
+
+    # --- archive_failures --------------------------------------------------------
+
+    def insert_failure(self, content_type: str, stage: str, error: str,
+                       wp_id: Optional[int] = None, detail: Optional[str] = None):
+        """Record one archive failure so a run can never claim success while
+        silently missing data. ``stage`` is one of 'item', 'page', 'taxonomy',
+        'completeness'."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO archive_failures (content_type, wp_id, stage, detail, error)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (content_type, wp_id, stage, detail, error))
+            conn.commit()
+
+    def get_recent_failures(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Most recent archive_failures rows, newest first."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT * FROM archive_failures
+                ORDER BY occurred_at DESC, id DESC
+                LIMIT ?
+            ''', (limit,))
+            return [dict(row) for row in cursor.fetchall()]
 
     # =============================================================================
     # POST RELATIONSHIPS (CATEGORIES AND TAGS)

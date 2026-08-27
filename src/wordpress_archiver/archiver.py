@@ -68,45 +68,54 @@ class WordPressArchiver:
             Dictionary with archive statistics
         """
         logger.info(f"Starting archive of {content_type}")
-        
-        stats = _new_stats(refreshed=0)
+
+        stats = _new_stats(refreshed=0, missing=0, incomplete=0)
         page = 1
         consecutive_empty_pages = 0
         per_page = min(100, limit) if limit else 100
-        
+        expected: Optional[int] = None
+
         # Format date for API
         after_iso = self.content_processor.format_date_for_api(after_date)
-        
+
         try:
             while True:
                 # Get content from API
                 response = self._get_content_page(api, content_type, page, per_page, after_iso)
-                
+
+                if page == 1:
+                    # X-WP-Total may be omitted (falsy) on routes that don't report
+                    # it — treat that as "unknown", not "zero".
+                    expected = getattr(response, 'total_count', None)
+
                 if not response.data:
                     break
-                
+
                 page_has_matching_content = False
-                
+
                 for item in response.data:
                     try:
                         page_has_matching_content = True
                         stats["processed"] += 1
-                        
+
                         # Process the item
                         self._process_content_item(content_type, item, stats, api)
-                        
+
                         # Check limit
                         if limit and stats["processed"] >= limit:
                             break
-                            
+
                     except Exception as e:
                         stats["errors"] += 1
                         logger.error(f"Error processing {content_type} {item.get('id', 'Unknown')}: {e}")
-                
+                        self.db.insert_failure(
+                            content_type, 'item', str(e),
+                            wp_id=item.get('id') if isinstance(item, dict) else None)
+
                 # Check limit again after processing the page
                 if limit and stats["processed"] >= limit:
                     break
-                
+
                 # Handle consecutive empty pages
                 if not page_has_matching_content:
                     consecutive_empty_pages += 1
@@ -115,16 +124,33 @@ class WordPressArchiver:
                         break
                 else:
                     consecutive_empty_pages = 0
-                
+
                 if page >= response.total_pages_count:
                     break
-                
+
                 page += 1
-        
+
         except Exception as e:
             logger.error(f"Error during {content_type} archiving: {e}")
             stats["errors"] += 1
-        
+            stats["incomplete"] = 1
+            self.db.insert_failure(content_type, 'page', str(e), detail=f'page {page}')
+
+        # Completeness check: only meaningful for a full, unbounded walk that
+        # actually finished (a --limit run or an after_date filter is expected
+        # to stop short of X-WP-Total by design; an interrupted walk already
+        # recorded 'incomplete' above).
+        if (limit is None and after_iso is None and stats["incomplete"] == 0
+                and isinstance(expected, int) and expected > 0
+                and stats["processed"] < expected):
+            stats["missing"] = expected - stats["processed"]
+            logger.warning(
+                f"{content_type}: archived {stats['processed']} of {expected} "
+                f"reported by X-WP-Total — {stats['missing']} missing")
+            self.db.insert_failure(
+                content_type, 'completeness',
+                f"archived {stats['processed']} of {expected} reported by X-WP-Total")
+
         logger.info(f"Completed archive of {content_type}: {stats}")
         return stats
     
@@ -230,7 +256,8 @@ class WordPressArchiver:
                         logger.debug(f"Saved category: {category_data.get('name', category_id)}")
                 except Exception as e:
                     logger.warning(f"Failed to fetch category {category_id}: {e}")
-        
+                    self.db.insert_failure('categories', 'taxonomy', str(e), wp_id=category_id)
+
         # Process tags
         tag_ids = post_data.get('tags', [])
         for tag_id in tag_ids:
@@ -243,6 +270,7 @@ class WordPressArchiver:
                         logger.debug(f"Saved tag: {tag_data.get('name', tag_id)}")
                 except Exception as e:
                     logger.warning(f"Failed to fetch tag {tag_id}: {e}")
+                    self.db.insert_failure('tags', 'taxonomy', str(e), wp_id=tag_id)
     
     def _get_item_title(self, content_data: Dict[str, Any], content_type: str) -> str:
         """Get a human-readable title for the content item."""
@@ -789,7 +817,14 @@ class WordPressArchiver:
                 response = api.get_route_page(route, page=page)
             except WordPressAPIError as e:
                 if page > 1:
-                    break  # later-page failure = end of pagination, not an error
+                    # Deliberate tolerance for quirky plugin routes that break
+                    # pagination partway through — treat as end of pagination
+                    # rather than a hard error, but no longer silently.
+                    logger.warning(
+                        f"Endpoint {route} failed on page {page}, ending walk early: {e}")
+                    self.db.insert_failure(
+                        route, 'page', str(e), detail=f'page {page} (walk ended early)')
+                    break
                 if e.status_code in PERMISSION_DENIED_STATUSES:
                     return 'walled'
                 if e.status_code == 400:
