@@ -468,7 +468,11 @@ Examples:
     )
     archive_parser.add_argument(
         '--after-date', '-a',
-        help="Only archive content after this date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"
+        help="Quick partial grab: posts/pages published OR modified after this "
+             "date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS); comments filtered by "
+             "their written date only (WordPress offers nothing better), so "
+             "late-approved comments are still only caught by a full run. Not "
+             "a substitute for the plain complete archive."
     )
     archive_parser.add_argument(
         '--db',
