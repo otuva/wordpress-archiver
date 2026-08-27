@@ -109,11 +109,15 @@ def test_whitespace_and_entity_representation_do_not_change_hash():
 # B. DatabaseManager.update_content_hash targets exactly one row
 # =============================================================================
 
-def test_update_content_hash_restamps_targeted_row_only(db, db_path):
+def test_update_content_hash_restamps_latest_version_only(db, db_path):
     data_v1 = _insert_post(db, 1, version=1, content="<p>one</p>")
     data_v2 = _insert_post(db, 1, version=2, content="<p>two</p>")
 
-    db.update_content_hash("posts", 1, 1, "restamped-hash")
+    # Latest version restamps normally.
+    db.update_content_hash("posts", 1, 2, "restamped-hash")
+    # A stale version number (e.g. another writer appended a newer version
+    # after the caller read it) is a guarded no-op, never a historical edit.
+    db.update_content_hash("posts", 1, 1, "must-not-land")
 
     conn = raw_connect(db_path)
     hash_v1 = conn.execute(
@@ -122,9 +126,9 @@ def test_update_content_hash_restamps_targeted_row_only(db, db_path):
         "SELECT content_hash FROM posts WHERE wp_id = 1 AND version = 2").fetchone()[0]
     conn.close()
 
-    assert hash_v1 == "restamped-hash"
-    assert hash_v2 == data_v2["content_hash"], "the non-targeted version must be untouched"
-    assert hash_v2 != "restamped-hash"
+    assert hash_v2 == "restamped-hash"
+    assert hash_v1 == data_v1["content_hash"], "non-latest versions must be untouched"
+    assert hash_v1 != "must-not-land"
 
 
 # =============================================================================

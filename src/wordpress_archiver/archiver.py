@@ -19,6 +19,7 @@ from .api import WordPressAPI, WordPressAPIError, PERMISSION_DENIED_STATUSES
 from .database import DatabaseManager
 from .content_processor import (
     ContentProcessor,
+    HASH_SOURCE_FIELDS,
     normalize_asset_url,
     url_hash,
     is_archivable_asset,
@@ -37,18 +38,6 @@ def _new_stats(**extra) -> Dict[str, int]:
     base = {"processed": 0, "new": 0, "updated": 0, "errors": 0, "failed": 0}
     base.update(extra)
     return base
-
-# Fields that actually feed calculate_content_hash per content type (see
-# ContentProcessor.extract_content_data) — used to tell a genuine content
-# edit apart from a hash produced by a different hashing algorithm.
-HASH_SOURCE_FIELDS = {
-    'posts': ('title', 'content', 'excerpt', 'status'),
-    'pages': ('title', 'content', 'excerpt', 'status'),
-    'comments': ('content', 'status'),
-    'users': ('name', 'description', 'url'),
-    'categories': ('name', 'description', 'slug'),
-    'tags': ('name', 'description', 'slug'),
-}
 
 
 class WordPressArchiver:

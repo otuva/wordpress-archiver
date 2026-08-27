@@ -705,10 +705,17 @@ class DatabaseManager:
         """
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            # Write lock + latest-only guard: if another writer appended a
+            # newer version since the caller read `version`, restamping that
+            # now-historical row would corrupt its bookkeeping — skip instead
+            # (the stale hash on an old version is never read back).
+            cursor.execute("BEGIN IMMEDIATE")
             cursor.execute(f"""
                 UPDATE {content_type} SET content_hash = ?
-                WHERE wp_id = ? AND version = ?
-            """, (content_hash, wp_id, version))
+                WHERE wp_id = ? AND version = ? AND version = (
+                    SELECT MAX(version) FROM {content_type} WHERE wp_id = ?
+                )
+            """, (content_hash, wp_id, version, wp_id))
             conn.commit()
 
     def _sync_post_junction(self, cursor, table: str, id_column: str,
