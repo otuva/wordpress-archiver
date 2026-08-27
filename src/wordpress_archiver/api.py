@@ -5,6 +5,8 @@ Provides a clean interface to interact with WordPress REST API endpoints.
 """
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse
 from dataclasses import dataclass
@@ -19,6 +21,38 @@ logger = logging.getLogger(__name__)
 PERMISSION_DENIED_STATUSES = (401, 403)
 GONE_STATUSES = (404, 410)
 PERMANENT_FAILURE_STATUSES = PERMISSION_DENIED_STATUSES + GONE_STATUSES
+
+
+def _retrying_adapter() -> HTTPAdapter:
+    """Build an HTTPAdapter that retries transient failures with backoff.
+
+    Retries connection errors and read timeouts up to 3 times, and 429/5xx
+    responses at most twice, waiting 1s/2s/4s between attempts (capped at 30s,
+    and honoring a server's Retry-After header when present — also capped at
+    30s so a hostile/huge Retry-After can't stall a run for minutes). Status
+    retries are capped below the transport ones because callers with their own
+    fallback tiers (``get_route_page`` tries up to three param variants) stack
+    on top of this layer — a route that 503s persistently must fail in
+    seconds, not minutes. Only GET/HEAD are retried, since those are the only
+    methods this client issues and they're safe to repeat.
+    ``raise_on_status=False`` means the final (possibly still failing)
+    response is returned rather than raised here, so the existing
+    ``raise_for_status()``/status handling in this module keeps classifying
+    permanent failures (401/403/404/410/etc.) exactly as before.
+    """
+    retry = Retry(
+        total=3,
+        connect=3,
+        read=3,
+        status=2,
+        backoff_factor=1,
+        backoff_max=30,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(["GET", "HEAD"]),
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
+    return HTTPAdapter(max_retries=retry)
 
 
 @dataclass
@@ -43,8 +77,15 @@ class WordPressAPIError(Exception):
 
 
 class WordPressAPI:
-    """WordPress REST API wrapper with comprehensive error handling."""
-    
+    """WordPress REST API wrapper with comprehensive error handling.
+
+    Transient failures (connection errors, timeouts, 429, 5xx) are retried up
+    to 3 times per request with exponential backoff (1s/2s/4s, capped at 30s,
+    honoring a server's Retry-After header), via a retry policy mounted on
+    every session — see ``_retrying_adapter``. Permanent HTTP statuses
+    (401/403/404/410/etc.) still fail immediately, exactly as before.
+    """
+
     def __init__(self, domain: str, timeout: int = 30,
                  auth: Optional[tuple] = None):
         """
@@ -68,11 +109,15 @@ class WordPressAPI:
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
+        self.session.mount("http://", _retrying_adapter())
+        self.session.mount("https://", _retrying_adapter())
         # Separate pooled session for off-origin media (hotlinked images, CDNs).
         # It carries NO credentials, so the WP application password is never sent
         # to third-party hosts — and its connections are reused across downloads.
         self._anon_session = requests.Session()
         self._anon_session.headers.update(self.headers)
+        self._anon_session.mount("http://", _retrying_adapter())
+        self._anon_session.mount("https://", _retrying_adapter())
         self.authenticated = bool(auth)
         if auth:
             self.session.auth = auth
