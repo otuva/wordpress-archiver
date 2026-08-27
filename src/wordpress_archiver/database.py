@@ -225,6 +225,19 @@ ARCHIVE_META_TABLE_SCHEMA = '''
     )
 '''
 
+# Superseded raw_json snapshots from update_latest_raw_json's in-place refresh,
+# so metadata-only re-runs (unchanged content_hash) stay lossless too.
+RAW_JSON_HISTORY_TABLE_SCHEMA = '''
+    CREATE TABLE IF NOT EXISTS raw_json_history (
+        id INTEGER PRIMARY KEY,
+        content_type TEXT NOT NULL,
+        wp_id INTEGER NOT NULL,
+        version INTEGER NOT NULL,
+        raw_json TEXT NOT NULL,
+        replaced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+'''
+
 # =============================================================================
 # DATABASE INDEXES
 # =============================================================================
@@ -254,6 +267,7 @@ DATABASE_INDEXES = [
     ("idx_api_objects_endpoint", "api_objects", "endpoint"),
     ("idx_api_objects_wp_id", "api_objects", "wp_id"),
     ("idx_api_objects_endpoint_wpid_ver", "api_objects", "endpoint, wp_id, version"),
+    ("idx_raw_json_history_item", "raw_json_history", "content_type, wp_id"),
 ]
 
 # Versioned content tables that gain a raw_json column via migration.
@@ -335,6 +349,7 @@ class DatabaseManager:
             VIDEOS_TABLE_SCHEMA,
             API_OBJECTS_TABLE_SCHEMA,
             ARCHIVE_META_TABLE_SCHEMA,
+            RAW_JSON_HISTORY_TABLE_SCHEMA,
         ]
 
         for schema in schemas:
@@ -428,6 +443,30 @@ class DatabaseManager:
             """, (wp_id,))
             return [dict(row) for row in cursor.fetchall()]
     
+    def get_raw_json_history(self, content_type: str, wp_id: int) -> List[Dict[str, Any]]:
+        """
+        Get superseded raw_json snapshots for a content item, newest first.
+
+        These are the raw_json values displaced in place by
+        update_latest_raw_json (metadata-only re-runs) rather than by a new
+        version row, so they don't show up in get_content_versions.
+
+        Args:
+            content_type: Type of content (posts, comments, pages, etc.)
+            wp_id: WordPress ID of the content
+
+        Returns:
+            List of raw_json_history rows as dictionaries
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM raw_json_history
+                WHERE content_type = ? AND wp_id = ?
+                ORDER BY replaced_at DESC, id DESC
+            """, (content_type, wp_id))
+            return [dict(row) for row in cursor.fetchall()]
+
     def get_latest_version(self, content_type: str, wp_id: int) -> Optional[Dict[str, Any]]:
         """
         Get the latest version of a specific content item.
@@ -573,23 +612,100 @@ class DatabaseManager:
     # LOSSLESS ARCHIVE STORES (media blobs, videos, raw endpoints, meta)
     # =============================================================================
 
-    def update_latest_raw_json(self, content_type: str, wp_id: int, raw_json: str):
+    def update_latest_raw_json(self, content_type: str, wp_id: int, raw_json: str,
+                               categories: Optional[List[int]] = None,
+                               tags: Optional[List[int]] = None) -> bool:
         """
         Refresh raw_json on the latest version row in place (no new version).
 
         Used on re-runs where the visible content is unchanged but the API
         metadata changed, so the newest metadata stays current while content
-        history remains strictly append-only.
+        history remains strictly append-only: before being overwritten, the
+        superseded raw_json is preserved in raw_json_history (skipped when
+        the stored raw_json is already NULL — a pre-lossless row — since
+        there's nothing to preserve, and skipped entirely when the new
+        raw_json is identical to what's stored).
+
+        For posts, also re-syncs the post_categories/post_tags junction rows
+        for the latest version against the passed ids, since insert_content
+        is the only other writer of those tables and this path bypasses it.
+
+        Args:
+            content_type: Type of content (posts, comments, pages, etc.)
+            wp_id: WordPress ID of the content
+            raw_json: New raw_json to store
+            categories: Current category wp_ids (posts only; None = skip sync)
+            tags: Current tag wp_ids (posts only; None = skip sync)
+
+        Returns:
+            True if raw_json was actually replaced, False if there was no
+            latest version row or the stored raw_json was already identical.
         """
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(f"""
-                UPDATE {content_type} SET raw_json = ?
-                WHERE wp_id = ? AND version = (
-                    SELECT MAX(version) FROM {content_type} WHERE wp_id = ?
-                )
-            """, (raw_json, wp_id, wp_id))
+                SELECT version, raw_json FROM {content_type}
+                WHERE wp_id = ? ORDER BY version DESC LIMIT 1
+            """, (wp_id,))
+            row = cursor.fetchone()
+            if row is None:
+                return False
+
+            latest_version, old_raw_json = row[0], row[1]
+            replaced = False
+
+            if old_raw_json != raw_json:
+                if old_raw_json is not None:
+                    cursor.execute('''
+                        INSERT INTO raw_json_history
+                        (content_type, wp_id, version, raw_json)
+                        VALUES (?, ?, ?, ?)
+                    ''', (content_type, wp_id, latest_version, old_raw_json))
+                cursor.execute(f"""
+                    UPDATE {content_type} SET raw_json = ?
+                    WHERE wp_id = ? AND version = ?
+                """, (raw_json, wp_id, latest_version))
+                replaced = True
+
+            if content_type == 'posts':
+                if categories is not None:
+                    cursor.execute('''
+                        SELECT category_wp_id FROM post_categories
+                        WHERE post_wp_id = ? AND version = ?
+                    ''', (wp_id, latest_version))
+                    existing_categories = {r[0] for r in cursor.fetchall()}
+                    if existing_categories != set(categories):
+                        cursor.execute('''
+                            DELETE FROM post_categories
+                            WHERE post_wp_id = ? AND version = ?
+                        ''', (wp_id, latest_version))
+                        for category_id in categories:
+                            cursor.execute('''
+                                INSERT OR IGNORE INTO post_categories
+                                (post_wp_id, category_wp_id, version)
+                                VALUES (?, ?, ?)
+                            ''', (wp_id, category_id, latest_version))
+
+                if tags is not None:
+                    cursor.execute('''
+                        SELECT tag_wp_id FROM post_tags
+                        WHERE post_wp_id = ? AND version = ?
+                    ''', (wp_id, latest_version))
+                    existing_tags = {r[0] for r in cursor.fetchall()}
+                    if existing_tags != set(tags):
+                        cursor.execute('''
+                            DELETE FROM post_tags
+                            WHERE post_wp_id = ? AND version = ?
+                        ''', (wp_id, latest_version))
+                        for tag_id in tags:
+                            cursor.execute('''
+                                INSERT OR IGNORE INTO post_tags
+                                (post_wp_id, tag_wp_id, version)
+                                VALUES (?, ?, ?)
+                            ''', (wp_id, tag_id, latest_version))
+
             conn.commit()
+            return replaced
 
     # --- media -----------------------------------------------------------------
 
