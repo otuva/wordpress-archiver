@@ -180,6 +180,8 @@ MEDIA_TABLE_SCHEMA = '''
         byte_size INTEGER DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'ok',
         http_status INTEGER,
+        etag TEXT,
+        last_modified TEXT,
         fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
 '''
@@ -272,6 +274,9 @@ DATABASE_INDEXES = [
 
 # Versioned content tables that gain a raw_json column via migration.
 RAW_JSON_TABLES = ['posts', 'comments', 'pages', 'users', 'categories', 'tags']
+
+# (table, column, sql_type) triples added to existing databases via migration.
+ADDITIVE_COLUMNS = [("media", "etag", "TEXT"), ("media", "last_modified", "TEXT")]
 
 # =============================================================================
 # DATABASE MANAGER CLASS
@@ -371,6 +376,11 @@ class DatabaseManager:
             if not self._column_exists(cursor, table, 'raw_json'):
                 cursor.execute(f"ALTER TABLE {table} ADD COLUMN raw_json TEXT")
                 logger.info(f"Migration: added {table}.raw_json")
+
+        for table, column, sql_type in ADDITIVE_COLUMNS:
+            if not self._column_exists(cursor, table, column):
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}")
+                logger.info(f"Migration: added {table}.{column}")
 
     def _create_indexes(self, cursor):
         """Create database indexes for better query performance."""
@@ -776,17 +786,20 @@ class DatabaseManager:
 
     def insert_media(self, url_hash: str, url: str, content: Optional[bytes],
                      content_hash: Optional[str], mime_type: Optional[str],
-                     status: str, http_status: Optional[int]):
+                     status: str, http_status: Optional[int],
+                     etag: Optional[str] = None, last_modified: Optional[str] = None):
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT OR REPLACE INTO media
-                (url_hash, url, content, content_hash, mime_type, byte_size, status, http_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (url_hash, url, content, content_hash, mime_type, byte_size, status, http_status,
+                 etag, last_modified)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 url_hash, url, content, content_hash,
                 mime_type or 'application/octet-stream',
-                len(content) if content else 0, status, http_status
+                len(content) if content else 0, status, http_status,
+                etag, last_modified
             ))
             conn.commit()
 
